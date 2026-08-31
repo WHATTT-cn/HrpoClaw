@@ -309,6 +309,14 @@ const TRUSTED_OFFICIAL_EXTENSION_PLUGINS: Record<string, TrustedOfficialExtensio
     npmName: 'clawx-openai-image-plugin',
     recordSource: 'path',
   },
+  // weights-guard is a ClawX-local knowledge-compliance guard plugin shipped as
+  // source under resources/openclaw-plugins/weights-guard/ (not published to
+  // npm). Keep it path-owned so startup migration never tries to fetch/replace
+  // it from a registry.
+  'weights-guard': {
+    npmName: 'weights-guard-plugin',
+    recordSource: 'path',
+  },
 };
 
 type TrustedOfficialPluginInstallRecord = Record<string, unknown> & {
@@ -939,6 +947,14 @@ export function ensureClawXOpenAiImagePluginInstalled(): Promise<PluginInstallRe
     'clawx-openai-image',
     buildCandidateSources('clawx-openai-image'),
     'ClawX OpenAI Image',
+  );
+}
+
+export function ensureWeightsGuardPluginInstalled(): Promise<PluginInstallResult> {
+  return ensurePluginInstalled(
+    'weights-guard',
+    buildCandidateSources('weights-guard'),
+    'Weights Guard',
   );
 }
 

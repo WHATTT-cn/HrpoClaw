@@ -49,6 +49,7 @@ import {
 import { createSignalQuitHandler } from './signal-quit';
 import { acquireProcessInstanceFileLock } from './process-instance-lock';
 import { ensureBuiltinSkillsInstalled, ensurePreinstalledSkillsInstalled, trimBundledOpenClawSkillsAndConfigs } from '../utils/skill-config';
+import { ensureWeightsGuardPluginInstalled } from '../utils/plugin-install';
 
 import { deviceOAuthManager } from '../utils/device-oauth';
 import { browserOAuthManager } from '../utils/browser-oauth';
@@ -443,10 +444,20 @@ async function initialize(): Promise<void> {
     });
   }
 
-  // Plugin installation is now configuration-driven:
+  // Channel plugin installation is configuration-driven:
   // - When a channel is added via UI: ensureXxxPluginInstalled() in IPC handlers
   // - When Gateway starts: ensureConfiguredPluginsUpgraded() in config-sync.ts
-  // No need to pre-install all bundled plugins at app startup.
+  // No need to pre-install all bundled *channel* plugins at app startup.
+  //
+  // weights-guard is the exception: it is a security/compliance hook plugin that
+  // must be present unconditionally (constant install), independent of any
+  // channel configuration. Deploy it every startup, fire-and-forget, so it is
+  // always mirrored into ~/.openclaw/extensions/ before the Gateway loads.
+  if (!isE2EMode) {
+    void ensureWeightsGuardPluginInstalled().catch((error) => {
+      logger.warn('Failed to install/upgrade Weights Guard plugin:', error);
+    });
+  }
 
   // Bridge gateway and host-side events before any auto-start logic runs, so
   // renderer subscribers observe the full startup lifecycle.

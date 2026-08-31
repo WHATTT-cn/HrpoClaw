@@ -20,6 +20,7 @@ import {
   removeProviderFromOpenClaw,
 } from '../utils/openclaw-auth';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
+import { createModesApi } from '../services/modes-api';
 import { logger } from '../utils/logger';
 import { resolveAgentIdFromChannel } from '../utils/agent-config';
 import { resolveAccountIdFromSessionHistory } from '../utils/session-util';
@@ -178,6 +179,7 @@ function registerTypedHostHandlers(
     cron: createCronApi({ gatewayManager }),
     skills: createSkillsApi({ clawHubService, gatewayManager }),
     usage: createUsageApi(),
+    modes: createModesApi(),
   });
   registerHostInvokeHandler(hostApiRegistry);
 }

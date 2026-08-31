@@ -1053,7 +1053,19 @@ export type HostApiContract = {
   usage: {
     recentTokenHistory: (payload?: UsageHistoryPayload) => UsageHistoryEntry[];
   };
+  modes: {
+    getWeightsGuardEnabled: () => WeightsGuardModeResult;
+    setWeightsGuardEnabled: (payload: SetWeightsGuardModePayload) => WeightsGuardModeResult;
+  };
 };
+
+export interface WeightsGuardModeResult {
+  enabled: boolean;
+}
+
+export interface SetWeightsGuardModePayload {
+  enabled: boolean;
+}
 
 export type HostApiModule = keyof HostApiContract & string;
 export type HostApiAction<M extends HostApiModule> = keyof HostApiContract[M] & string;

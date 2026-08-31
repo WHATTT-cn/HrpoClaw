@@ -421,6 +421,14 @@ export const hostApi = {
       invokeHost('usage', 'recentTokenHistory', { limit })
     ),
   },
+  modes: {
+    getWeightsGuardEnabled: () => (
+      invokeHost('modes', 'getWeightsGuardEnabled')
+    ),
+    setWeightsGuardEnabled: (enabled: boolean) => (
+      invokeHost('modes', 'setWeightsGuardEnabled', { enabled })
+    ),
+  },
 };
 
 export type HostApi = typeof hostApi;

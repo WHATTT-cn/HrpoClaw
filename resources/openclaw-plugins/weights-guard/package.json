@@ -1,0 +1,16 @@
+{
+  "name": "weights-guard-plugin",
+  "version": "0.1.0",
+  "description": "ClawX weights-guard: fail-closed safety gates for compliance weight adjustments in OpenClaw",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  }
+}
