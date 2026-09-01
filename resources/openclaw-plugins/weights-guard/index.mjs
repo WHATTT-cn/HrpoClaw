@@ -46,10 +46,12 @@ export const pluginEntry = definePluginEntry({
     const config = resolveConfig(api?.pluginConfig);
 
     api.registerHook("before_tool_call", async (event) => {
-      try {
-        // 上游事件真身：{ toolName, params, ... }；evidence 上下文从 params 自取。
+          try {
+        // 上游事件真身：{ toolName, params, ... }。
+        // toolName 守卫（Q-A 白名单式）由 handleBeforeToolCall 内部执行：
+        // 仅 submit_proposal 进五闸，其余工具及 toolName 缺失一律放行（返回 undefined）。
         const params = event?.params ?? {};
-        const result = handleBeforeToolCall(params, config);
+        const result = handleBeforeToolCall(params, config, event?.toolName);
 
         // 中性 HookResult → 上游真身：
         if (result?.block) {

@@ -264,6 +264,10 @@ var DEFAULT_CONFIG = {
   approvalTimeoutMinutes: 30,
   fallbackToAlgorithm: true
 };
+var TARGET_TOOL_NAME = "submit_proposal";
+function isGuardedTool(toolName) {
+  return typeof toolName === "string" && toolName === TARGET_TOOL_NAME;
+}
 function asRecord(v) {
   return v && typeof v === "object" && !Array.isArray(v) ? v : void 0;
 }
@@ -303,10 +307,11 @@ function toHookResult(decision, originalParams) {
   }
   return void 0;
 }
-function handleBeforeToolCall(params, config = DEFAULT_CONFIG) {
+function handleBeforeToolCall(params, config = DEFAULT_CONFIG, toolName) {
+  if (!isGuardedTool(toolName)) return void 0;
   const original = asRecord(params) ?? {};
   const decision = decideFromParams(params, config);
   return toHookResult(decision, original);
 }
 
-export { DEFAULT_CONFIG, handleBeforeToolCall };
+export { DEFAULT_CONFIG, TARGET_TOOL_NAME, handleBeforeToolCall, isGuardedTool };
