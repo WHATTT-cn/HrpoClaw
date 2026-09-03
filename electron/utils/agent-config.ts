@@ -692,6 +692,38 @@ export async function createAgent(
   return snapshot!;
 }
 
+/** 预置 PO 子 Agent 的展示名与其 slug 后的 id（"PO" → "po"）。 */
+export const PRESET_PO_AGENT_NAME = 'PO';
+export const PRESET_PO_AGENT_ID = 'po';
+
+/**
+ * 幂等预置 PO 子 Agent。
+ *
+ * 语义：
+ * - 若配置中已存在 id 为 `po` 的 Agent（无论是本函数早先创建，还是用户手工创建的同名 Agent），
+ *   直接跳过，不重复创建、不覆盖其 workspace。
+ * - 否则调用 createAgent('PO', { inheritWorkspace: true })，使 PO 的 workspace 引导文件
+ *   （AGENTS.md / SOUL.md 等）复制自 main Agent —— 满足「workspace 内容暂时与 main 一致」。
+ *
+ * 设计意图：供应用启动 bootstrap 调用，确保 PO 作为常驻可切换的业务 Agent 始终存在。
+ * 返回是否发生了实际创建，便于调用方决定是否需要刷新前端 Agent 列表。
+ */
+export async function ensurePresetPoAgent(): Promise<{ created: boolean }> {
+  try {
+    const existingIds = await listConfiguredAgentIds();
+    if (existingIds.includes(PRESET_PO_AGENT_ID)) {
+      return { created: false };
+    }
+    await createAgent(PRESET_PO_AGENT_NAME, { inheritWorkspace: true });
+    logger.info('Provisioned preset PO agent', { agentId: PRESET_PO_AGENT_ID });
+    return { created: true };
+  } catch (error) {
+    // 预置失败不应阻断应用启动：记录后静默返回，用户仍可手动创建 Agent。
+    logger.error('Failed to ensure preset PO agent', error);
+    return { created: false };
+  }
+}
+
 export async function updateAgentName(agentId: string, name: string): Promise<AgentsSnapshot> {
   let snapshot: AgentsSnapshot | undefined;
   const normalizedName = normalizeAgentName(name);

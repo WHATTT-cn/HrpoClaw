@@ -8,6 +8,10 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { hostApi } from '@/lib/host-api';
 import { toUserMessage } from '@/lib/error-message';
+import { switchToAgent } from '@/lib/agent-switch';
+
+/** Renderer-side mirror of PRESET_PO_AGENT_ID (electron/utils/agent-config.ts). */
+const PRESET_PO_AGENT_ID = 'po';
 
 export function WeightsGuardModePage() {
   const [enabled, setEnabled] = useState(true);
@@ -44,6 +48,14 @@ export function WeightsGuardModePage() {
     try {
       const result = await hostApi.modes.setWeightsGuardEnabled(next);
       setEnabled(result.enabled);
+      // When weights-guard becomes enabled, auto-switch the chat to the preset
+      // "PO" agent so compliance work happens in its dedicated workspace.
+      if (result.enabled) {
+        const switched = await switchToAgent(PRESET_PO_AGENT_ID);
+        if (!switched) {
+          toast.error('已启用，但切换到 PO agent 失败');
+        }
+      }
     } catch (error) {
       toast.error(toUserMessage(error));
     } finally {

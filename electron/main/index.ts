@@ -50,6 +50,7 @@ import { createSignalQuitHandler } from './signal-quit';
 import { acquireProcessInstanceFileLock } from './process-instance-lock';
 import { ensureBuiltinSkillsInstalled, ensurePreinstalledSkillsInstalled, trimBundledOpenClawSkillsAndConfigs } from '../utils/skill-config';
 import { ensureWeightsGuardPluginInstalled } from '../utils/plugin-install';
+import { ensurePresetPoAgent } from '../utils/agent-config';
 
 import { deviceOAuthManager } from '../utils/device-oauth';
 import { browserOAuthManager } from '../utils/browser-oauth';
@@ -456,6 +457,14 @@ async function initialize(): Promise<void> {
   if (!isE2EMode) {
     void ensureWeightsGuardPluginInstalled().catch((error) => {
       logger.warn('Failed to install/upgrade Weights Guard plugin:', error);
+    });
+  }
+
+  // Provision the preset "PO" agent on first launch (idempotent). This mirrors
+  // the main agent's workspace so weights-guard can auto-switch to it later.
+  if (!isE2EMode) {
+    void ensurePresetPoAgent().catch((error) => {
+      logger.warn('Failed to provision preset PO agent:', error);
     });
   }
 
