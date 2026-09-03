@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, readdir, rm } from 'fs/promises';
+import { copyFile, lstat, mkdir, readdir, rm, writeFile } from 'fs/promises';
 import { join, normalize } from 'path';
 import { isDeepStrictEqual } from 'node:util';
 import { mutateOpenClawConfig } from '../gateway/config-delivery';
@@ -697,6 +697,51 @@ export const PRESET_PO_AGENT_NAME = 'PO';
 export const PRESET_PO_AGENT_ID = 'po';
 
 /**
+ * PO Agent workspace 预置的 HRBP 线下经验标签示例集。
+ *
+ * 仅在 PO 首次创建时写入其 workspace 根目录（Experience.md）；若文件已存在则跳过，
+ * 避免覆盖用户手工修改过的经验条目。
+ */
+const PRESET_PO_EXPERIENCE_FILE = 'Experience.md';
+const PRESET_PO_EXPERIENCE_CONTENT = `# HRBP 线下经验标签示例集
+
+## 供应商维度的经验
+
+- 【A供应商｜份额约束】沟通风格强硬，谈判中倾向以停供施压 → 份额系数软上限压至 25%（低于全局上限 35%），触及即降权
+- 【B供应商｜风险】过去发生 3 起员工劳资矛盾且处置不当，有仲裁记录 → 经验系数 ×0.90，禁止承接"高员工密度+夜班"组合单
+- 【C供应商｜能力加成】具备驻场支持能力（可派 2 名驻场管理员）→ 大批量单（>80人）绩效分 ×1.05 加成，优先承接新仓爬坡期订单
+- 【A供应商｜地域加成】总部位于 A 物流仓所在城市 → 单仓视角：A 仓的 fill rate 预期上调 8 个百分点、time to fill 预期缩短 1 天；全体视角：系数不变（仅对 A 仓生效，防止地域优势被误摊到全网）
+- 【C供应商｜合规风险】为行业头部大供应商，法务团队强势，历史合作中存在灰色用工操作（社保洼地挂靠） → 合规敏感订单经验系数 ×0.85，且触发法务必审流程
+
+## 场景/时点维度的经验
+
+- 【全体供应商×法定节假日｜用工性质指引】假期前后员工生产积极性低、出勤波动大 → 假期覆盖单优先派给"考勤率≥95% 且支持月结"的临时工资质供应商，考勤率子权重 ×1.3
+- 【全体供应商×大促｜用工性质指引】大促峰值需要大量日结临时工 → 大促单限定具备日结结算能力的供应商池，供给速度子权重 ×1.2
+
+## 物流仓维度的经验
+
+- 【B物流仓｜人效修正】该仓自动化水平高（自动分拣线覆盖率 80%）→ 人效基准上调至 1.4 倍，理论需求人数相应下降；同时用工结构偏向"设备看护岗"，技能要求标签自动附加
+- 【A物流仓×A供应商｜组合经验】A 供应商本地团队在 A 仓有成熟班组 → 该组合下新单磨合期豁免（首轮不启用"新供应商 10 人限额"）
+`;
+
+/**
+ * 幂等写入 PO workspace 的 Experience.md 预置文件。
+ *
+ * - 目标路径固定为 `~/.openclaw/workspace-po/Experience.md`（由 createAgent 保证 workspace 已存在）。
+ * - 文件已存在则跳过，避免覆盖用户改动。
+ */
+async function ensurePresetPoExperienceFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
+  const target = join(workspace, PRESET_PO_EXPERIENCE_FILE);
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(workspace);
+  await writeFile(target, PRESET_PO_EXPERIENCE_CONTENT, 'utf8');
+  logger.info('Provisioned preset PO experience file', { path: target });
+}
+
+/**
  * 幂等预置 PO 子 Agent。
  *
  * 语义：
@@ -712,9 +757,12 @@ export async function ensurePresetPoAgent(): Promise<{ created: boolean }> {
   try {
     const existingIds = await listConfiguredAgentIds();
     if (existingIds.includes(PRESET_PO_AGENT_ID)) {
+      // PO 已存在：仍幂等确保 Experience.md 存在（覆盖老环境升级场景）。
+      await ensurePresetPoExperienceFile();
       return { created: false };
     }
     await createAgent(PRESET_PO_AGENT_NAME, { inheritWorkspace: true });
+    await ensurePresetPoExperienceFile();
     logger.info('Provisioned preset PO agent', { agentId: PRESET_PO_AGENT_ID });
     return { created: true };
   } catch (error) {
