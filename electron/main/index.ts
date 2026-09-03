@@ -49,7 +49,10 @@ import {
 import { createSignalQuitHandler } from './signal-quit';
 import { acquireProcessInstanceFileLock } from './process-instance-lock';
 import { ensureBuiltinSkillsInstalled, ensurePreinstalledSkillsInstalled, trimBundledOpenClawSkillsAndConfigs } from '../utils/skill-config';
-import { ensureWeightsGuardPluginInstalled } from '../utils/plugin-install';
+import {
+  ensureWeightsGuardPluginInstalled,
+  ensureExperienceCapturePluginInstalled,
+} from '../utils/plugin-install';
 import { ensurePresetPoAgent } from '../utils/agent-config';
 
 import { deviceOAuthManager } from '../utils/device-oauth';
@@ -457,6 +460,17 @@ async function initialize(): Promise<void> {
   if (!isE2EMode) {
     void ensureWeightsGuardPluginInstalled().catch((error) => {
       logger.warn('Failed to install/upgrade Weights Guard plugin:', error);
+    });
+  }
+
+  // experience-capture is likewise a ClawX-local hook plugin (knowledge capture
+  // with human approval). It must be mirrored into ~/.openclaw/extensions/ before
+  // the Gateway loads, independent of any channel configuration. Deploy it every
+  // startup, fire-and-forget. It ships disabled-by-default (enabledByDefault:false),
+  // so presence alone is inert until a user/agent turns it on.
+  if (!isE2EMode) {
+    void ensureExperienceCapturePluginInstalled().catch((error) => {
+      logger.warn('Failed to install/upgrade Experience Capture plugin:', error);
     });
   }
 

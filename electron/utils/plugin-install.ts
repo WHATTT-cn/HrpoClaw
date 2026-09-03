@@ -317,6 +317,14 @@ const TRUSTED_OFFICIAL_EXTENSION_PLUGINS: Record<string, TrustedOfficialExtensio
     npmName: 'weights-guard-plugin',
     recordSource: 'path',
   },
+  // experience-capture is a ClawX-local knowledge-capture hook plugin shipped as
+  // source under resources/openclaw-plugins/experience-capture/ (not published to
+  // npm). Keep it path-owned so startup migration never tries to fetch/replace it
+  // from a registry.
+  'experience-capture': {
+    npmName: 'experience-capture-plugin',
+    recordSource: 'path',
+  },
 };
 
 type TrustedOfficialPluginInstallRecord = Record<string, unknown> & {
@@ -955,6 +963,14 @@ export function ensureWeightsGuardPluginInstalled(): Promise<PluginInstallResult
     'weights-guard',
     buildCandidateSources('weights-guard'),
     'Weights Guard',
+  );
+}
+
+export function ensureExperienceCapturePluginInstalled(): Promise<PluginInstallResult> {
+  return ensurePluginInstalled(
+    'experience-capture',
+    buildCandidateSources('experience-capture'),
+    'Experience Capture',
   );
 }
 

@@ -1,0 +1,26 @@
+{
+  "id": "experience-capture",
+  "name": "Experience Capture",
+  "description": "采购(PO)线下经验知识落库 + 人审:模型识别用户输入中的线下经验后调用 record_po_experience 工具,插件在 before_tool_call 拦截并发起人审弹窗,用户确认后写入 ~/.openclaw/workspace-po/Experience.md。",
+  "version": "0.1.0",
+  "entry": "index.mjs",
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "approvalTimeoutMinutes": {
+        "type": "number",
+        "description": "人审弹窗等待超时(分钟)。默认 5。",
+        "default": 5,
+        "minimum": 1
+      },
+      "timeoutBehavior": {
+        "type": "string",
+        "description": "审批超时行为:deny=不写入(默认) / allow=按允许处理。",
+        "enum": ["allow", "deny"],
+        "default": "deny"
+      }
+    }
+  }
+}
