@@ -14,7 +14,7 @@ import { switchToAgent } from '@/lib/agent-switch';
 const PRESET_PO_AGENT_ID = 'po';
 
 export function WeightsGuardModePage() {
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -27,9 +27,9 @@ export function WeightsGuardModePage() {
           setEnabled(result.enabled);
         }
       } catch (error) {
-        // fail-closed：读取失败时视为启用
+        // 默认关闭：读取失败时保守回落到「关闭」，与后端默认语义一致
         if (!cancelled) {
-          setEnabled(true);
+          setEnabled(false);
         }
         toast.error(toUserMessage(error));
       } finally {

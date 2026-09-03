@@ -4,7 +4,7 @@
   "description": "知识型合规权重微调 Agent 的安全组件：LLM 只是提案，代码才是法律。通过五道闸门（injection/whitelist/amplitude/evidence/normalize）在 before_tool_call 阶段对权重调整提案做 fail-closed 校验。",
   "version": "0.1.0",
   "entry": "index.mjs",
-  "enabledByDefault": true,
+  "enabledByDefault": false,
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
