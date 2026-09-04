@@ -16,6 +16,15 @@ import { logger } from './logger';
 export const WEIGHTS_GUARD_PLUGIN_ID = 'weights-guard';
 
 /**
+ * experience-capture 插件 id（与 openclaw.plugin.json 一致）。
+ *
+ * 产品约定：模式页同一个 UI 开关同时控制 weights-guard 与 experience-capture 两个插件，
+ * 二者随该开关同开同关。故本模块在写入 weights-guard entry 的同一事务里同步写此插件，
+ * 保证原子性、避免出现两者启停状态不一致的中间态。
+ */
+export const EXPERIENCE_CAPTURE_PLUGIN_ID = 'experience-capture';
+
+/**
  * 读取 weights-guard 当前是否启用。
  *
  * 语义：
@@ -44,6 +53,10 @@ export async function getWeightsGuardEnabled(): Promise<boolean> {
 /**
  * 设置 weights-guard 启用状态，写入 OpenClaw 配置。
  *
+ * 产品约定：模式页同一个 UI 开关同时控制 weights-guard 与 experience-capture，
+ * 故本函数在同一个 mutateOpenClawConfig 事务里同步写两个插件的 enabled，
+ * 保证同开同关、避免出现两者状态不一致的中间态。
+ *
  * 使用 mutateOpenClawConfig 事务原语，确保与其它配置写入串行、互不覆盖。
  */
 export async function setWeightsGuardEnabled(enabled: boolean): Promise<void> {
@@ -55,10 +68,12 @@ export async function setWeightsGuardEnabled(enabled: boolean): Promise<void> {
     if (!config.plugins.entries) {
       config.plugins.entries = {};
     }
-    if (!config.plugins.entries[WEIGHTS_GUARD_PLUGIN_ID]) {
-      config.plugins.entries[WEIGHTS_GUARD_PLUGIN_ID] = {};
+    for (const pluginId of [WEIGHTS_GUARD_PLUGIN_ID, EXPERIENCE_CAPTURE_PLUGIN_ID]) {
+      if (!config.plugins.entries[pluginId]) {
+        config.plugins.entries[pluginId] = {};
+      }
+      config.plugins.entries[pluginId].enabled = enabled;
     }
-    config.plugins.entries[WEIGHTS_GUARD_PLUGIN_ID].enabled = enabled;
   });
-  logger.info(`Set weights-guard enabled: ${enabled}`);
+  logger.info(`Set weights-guard & experience-capture enabled: ${enabled}`);
 }

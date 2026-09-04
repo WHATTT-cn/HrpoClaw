@@ -17,6 +17,8 @@ export function WeightsGuardModePage() {
   const [enabled, setEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // 「新供应商引入」仅前端展示，不联动任何后端逻辑，状态仅存本地。
+  const [supplierOnboardingEnabled, setSupplierOnboardingEnabled] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,10 +89,24 @@ export function WeightsGuardModePage() {
             <div>
               <Label className="text-sm font-medium text-foreground/80">供应商管理</Label>
               <p className="text-meta text-muted-foreground mt-1">
-                启用后，AI 提出的权重微调建议会先经过合规校验网关；任何越界或无据的改动都会被拦截。
+                启用后，AI 提出的权重微调建议会先经过合规校验网关；任何越界或无据的改动都会被拦截。同时开启采购线下经验的知识落库：识别到经验内容时会先弹窗人审，确认后归档到工作区。
               </p>
             </div>
             <Switch checked={enabled} disabled={loading || saving} onCheckedChange={handleToggle} />
+          </div>
+
+          {/* 新供应商引入 —— 仅前端展示，不联动任何后端逻辑 */}
+          <div className="flex items-center justify-between rounded-xl border border-black/5 dark:border-white/5 p-6">
+            <div>
+              <Label className="text-sm font-medium text-foreground/80">新供应商引入</Label>
+              <p className="text-meta text-muted-foreground mt-1">
+                围绕新供应商招采全流程提供辅助：从资质初筛、比价议价到准入建档，帮助高效引入合规优质的新供应商。
+              </p>
+            </div>
+            <Switch
+              checked={supplierOnboardingEnabled}
+              onCheckedChange={setSupplierOnboardingEnabled}
+            />
           </div>
         </div>
       </div>
