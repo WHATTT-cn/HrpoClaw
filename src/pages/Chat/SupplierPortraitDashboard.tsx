@@ -51,8 +51,12 @@ function RowCard({ 行 }: { 行: 画像行 }) {
         </span>
         <span className="text-xs text-muted-foreground">· {行.工种}</span>
         <span className="text-xs text-muted-foreground">· {行.班次}</span>
+        <span className="rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-400">
+          {行.用工性质}
+        </span>
       </div>
       <div className="grid grid-cols-3 gap-x-3 gap-y-2">
+        <Metric label="价格 $/(人·天)" value={行.价格.toFixed(1)} />
         <Metric label="供给率" value={行.供给率.toFixed(3)} />
         <Metric label="到岗天数" value={行.到岗天数.toFixed(1)} />
         <Metric label="考勤率" value={行.考勤率.toFixed(3)} />

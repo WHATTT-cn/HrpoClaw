@@ -1,38 +1,13 @@
 {
   "id": "weights-guard",
   "name": "Weights Guard",
-  "description": "知识型合规权重微调 Agent 的安全组件：LLM 只是提案，代码才是法律。通过五道闸门（injection/whitelist/amplitude/evidence/normalize）在 before_tool_call 阶段对权重调整提案做 fail-closed 校验。",
-  "version": "0.1.0",
+  "description": "PO 用工决策指引注入：在 before_prompt_build 阶段为 PO agent 注入「合理用工数 / 供应商分单」强制流程，要求回答前读取《供应商画像.md》与《Experience.md》并原文回显真实事实。不拦截工具、不做人审。",
+  "version": "0.2.0",
   "entry": "index.mjs",
-  "enabledByDefault": false,
+  "enabledByDefault": true,
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "properties": {
-      "amplitudeRange": {
-        "type": "number",
-        "description": "单维度权重调整的绝对幅度上限（±值）。默认 0.10。",
-        "default": 0.1,
-        "minimum": 0,
-        "maximum": 1
-      },
-      "evidenceTolerance": {
-        "type": "number",
-        "description": "事实回查时数值比对的容差。默认 0.001。",
-        "default": 0.001,
-        "minimum": 0
-      },
-      "approvalTimeoutMinutes": {
-        "type": "number",
-        "description": "需人工审批时的等待超时（分钟）。默认 30。",
-        "default": 30,
-        "minimum": 1
-      },
-      "fallbackToAlgorithm": {
-        "type": "boolean",
-        "description": "校验失败时是否回落到算法基准权重（fail-closed 的回落策略）。默认 true。",
-        "default": true
-      }
-    }
+    "properties": {}
   }
 }
