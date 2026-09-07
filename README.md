@@ -1,245 +1,234 @@
+<h1 align="center">HR Partner</h1>
 
 <p align="center">
-  <img src="src/assets/logo.svg" width="128" height="128" alt="ClawX Logo" />
-</p>
-
-<h1 align="center">ClawX</h1>
-
-<p align="center">
-  <strong>The Desktop Interface for OpenClaw AI Agents</strong>
-</p>
-
-<p align="center">
-  <a href="#why-clawx">Why ClawX</a> •
-  <a href="#getting-started">Getting Started</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#development">Development</a> •
-  <a href="#contributing">Contributing</a>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/platform-MacOS%20%7C%20Windows%20%7C%20Linux-blue" alt="Platform" />
-  <img src="https://img.shields.io/badge/electron-40+-47848F?logo=electron" alt="Electron" />
-  <img src="https://img.shields.io/badge/react-19-61DAFB?logo=react" alt="React" />
-  <a href="https://discord.com/invite/84Kex3GGAh" target="_blank">
-  <img src="https://img.shields.io/discord/1399603591471435907?logo=discord&labelColor=%20%235462eb&logoColor=%20%23f5f5f5&color=%20%235462eb" alt="chat on Discord" />
-  </a>
-  <img src="https://img.shields.io/github/downloads/ValueCell-ai/ClawX/total?color=%23027DEB" alt="Downloads" />
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License" />
-</p>
-
-<p align="center">
-  English | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja-JP.md">日本語</a> | <a href="README.ru-RU.md">Русский</a>
+  <strong>辅助 HR 垂类任务交付和运营的决策型 AI Buddy</strong>
 </p>
 
 ---
 
-## Overview
+## 概述
 
-**ClawX** bridges the gap between powerful AI agents and everyday users. Built on top of [OpenClaw](https://github.com/OpenClaw), it transforms command-line AI orchestration into an accessible, beautiful desktop experience - no terminal required.
+**HR Partner** 是一款面向 HR（人力资源）垂直场景的桌面级 AI 工作台。它在成熟的 OpenClaw 智能体运行时之上，集成了 **HR 垂类工作模式**，把「算法权重决策 + LLM 经验微调 + 确定性合规校验 + 线下经验沉淀」打包成一套可审计、可回放、永不失控的闭环。
 
-Whether you're automating workflows, managing AI-powered channels, or scheduling intelligent tasks, ClawX provides the interface you need to harness AI agents effectively.
+在 HR 的供应商评分、人才评估、绩效权重等以**算法权重**为基准的决策场景中，HR Partner 引入 LLM 对权重做微调——输入「case 结构化数据 + 算法权重 + 画像摘要」，由 LLM 输出权重调整提案。但我们坚持一条核心理念：
 
-ClawX comes pre-configured with best-practice model providers and natively supports Windows as well as multi-language settings. Compaction reserves automatically follow the selected model's context window, and completed turns continue through the summary instead of being replayed verbatim after compaction. Developer Mode shows the applied reserve value. You can also fine-tune advanced configurations via **Settings -> Advanced -> Developer Mode**.
+> **「LLM 只是提案，代码才是法律。」**
 
-<p align="center"><strong style="font-size:1.1em; text-decoration: underline;">For a full enterprise edition, dedicated service support, or tailored deployment guidance for your business scenario, contact us at <a href="mailto:public@valuecell.ai">public@valuecell.ai</a>.</strong></p>
+LLM 的每一条输出，都必须穿过**五道机器闸门**才允许生效；任何一环失败，即回落到纯算法权重，业务流程永不中断。与此同时，HRBP（HR Business Partner）在一线积累的**线下经验**会被持续「落袋」为可跨会话、跨项目复用的知识资产。
 
-## Screenshots
+<p align="center">
+  <img src=".resources/screenshot/首页.png" alt="HR Partner 概览" width="720" />
+</p>
+<p align="center">
+  <img src=".resources/screenshot/模式.png" alt="HR Partner 概览" width="720" />
+</p>
+<p align="center">
+  <img src=".resources/screenshot/线下经验.png" alt="HR Partner 概览" width="720" />
+</p>
+<p align="center">
+  <img src=".resources/screenshot/合理用工数.png" alt="HR Partner 概览" width="720" />
+</p>
+<p align="center">
+  <img src=".resources/screenshot/多供应商分单.png" alt="HR Partner 概览" width="720" />
+</p>
+---
 
-<table>
-  <tr>
-    <td align="center"><img src="resources/screenshot/en/chat.png" alt="Chat"><br><em>Chat</em></td>
-    <td align="center"><img src="resources/screenshot/en/cron.png" alt="Cron"><br><em>Scheduled tasks</em></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="resources/screenshot/en/skills.png" alt="Skills"><br><em>Skills</em></td>
-    <td align="center"><img src="resources/screenshot/en/channels.png" alt="Channels"><br><em>Channels</em></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="resources/screenshot/en/models.png" alt="Models"><br><em>Models</em></td>
-    <td align="center"><img src="resources/screenshot/en/settings.png" alt="Settings"><br><em>Settings</em></td>
-  </tr>
-</table>
+## 核心能力
 
-## Why ClawX
+HR Partner 在通用智能体桌面体验之外，重点强化了两项 HR 垂类核心能力：**五闸校验**与**HRBP 线下经验落袋**。
 
-Building AI agents shouldn't require mastering the command line. ClawX was designed with a simple philosophy: **powerful technology deserves an interface that respects your time.** ClawX is built directly upon the official **OpenClaw** core. Instead of requiring a separate installation, we embed the runtime within the application for a seamless, battery-included experience. We stay closely aligned with upstream OpenClaw so you can benefit from the latest official capabilities, stability improvements, and ecosystem compatibility.
+| 能力 | 说明 |
+|------|------|
+| 🛡️ **五闸校验** | LLM 权重提案必经五道确定性代码闸门，任一不过即拦截回喂，安全回落算法基线 |
+| 📥 **HRBP 经验落袋** | 一线 HRBP 的线下经验经提炼、暂存、人审后，沉淀为可复用的知识文件 |
+| 🧠 **云端小模型画像映射** | 上游云端画像统计小模型输出面向 AI 的结构化映射，结合本地线下经验带动大模型思考 |
+| 🎯 **HR 工作模式集成** | 内置面向供应商评分 / 人才评估的垂类工作流，开箱即用 |
+| 📝 **全程留痕可审计** | 每次微调记录全量现场，知识文件的每次变更记录来源与审批人 |
+| 🔁 **可回放可回归** | 审计轨迹支持回放与月度回归，模型漂移可被及时发现 |
+| 💬 **图形化桌面体验** | 基于 OpenClaw 的多会话聊天、技能管理、多渠道接入，无需终端 |
 
-| Challenge | ClawX Solution |
-|-----------|----------------|
-| Complex CLI setup | One-click installation with a guided setup wizard |
-| Configuration files | Visual settings with real-time validation |
-| Process management | Automatic Gateway lifecycle management |
-| App updates | Startup update checks with a prompt before downloading or installing |
-| Multiple AI providers | Unified provider configuration panel |
-| Skill/plugin installation | Local-first skill management with an optional extension-provided marketplace |
+---
 
-### Features
+## 五闸校验
 
-- **🎯 Zero Configuration Barrier**: Complete setup through an intuitive graphical interface - no terminal commands, YAML files, or environment-variable hunting.
-- **💬 Intelligent Chat Interface**: Multi-session context and history, streaming Markdown with syntax highlighting, CJK-aware parsing, tables, KaTeX math, direct `@agent` routing, inline `/skill` cards, workspace-first sessions, and read-only previews for Markdown, `.docx`, `.pptx`, and local HTML.
-- **🤖 Agent Lifecycle Management**: Create and manage specialized Agents from the desktop. Deleting a non-default Agent requires explicit confirmation and permanently removes its ClawX-managed workspace and associated chat history; its conversations disappear from the sidebar immediately and cannot be recovered.
-- **🧰 Issue Report Export**: Open Settings > Support to review the bundle contents, select one or more conversations (or select all), and create a ZIP on the desktop with their JSONL transcripts, sanitized OpenClaw configuration, and available diagnostic logs; ClawX shows the saved path when complete.
-- **📡 Multi-Channel Management**: Configure and monitor independent AI channels with multiple accounts, per-account agent binding, default-account switching, and the bundled official Tencent personal WeChat channel plugin.
-- **⏰ Cron-Based Automation**: Define recurring or one-time schedules, insert skills into scheduled prompts, and deliver results to external channels.
-- **🧩 Extensible Skill System**: Manage skills locally without depending on the Gateway, discover skills from multiple OpenClaw sources, and use bundled document-processing skills for `pdf`, `xlsx`, `docx`, and `pptx`.
-- **🔐 Secure Provider Integration**: Connect OpenAI, Anthropic, Z.AI / GLM, and other providers with credentials stored in the native system keychain; supports OAuth, custom providers, image-generation endpoints, and compatibility fallbacks.
-- **🌙 Adaptive Theming**: Choose light mode, dark mode, or system-synchronized themes.
-- **🚀 Startup Launch Control**: Enable **Launch at system startup** in **Settings -> General**.
-- **🔔 Update Prompts**: Check for new versions at startup and choose whether to download or install them.
+五闸校验是 HR Partner 合规回路的心脏。它把原本依赖「提示词纪律」的软约束，全部搬进**确定性代码**，作用域收敛到唯一的「生效通道」——权重提案工具 `submit_proposal`。
 
-> For full feature details, see [docs/en-US/features.md](docs/en-US/features.md).
+### 五道闸门
 
-### Typical Use Cases
+| 闸门 | 名称 | 作用 |
+|------|------|------|
+| ① | **幅度硬约束** | 单次权重调整幅度不得超过 ±0.10，越界即拦截 |
+| ② | **权重归一化** | 通过校验后由确定性函数归一化截断，模型无需感知 |
+| ③ | **维度白名单** | 只允许调整预定义维度，非白名单维度一律拒绝 |
+| ④ | **依据必填 + 事实回查** | 原文引用必须是 case 原文子串，画像数值容差 1e-3，杜绝编造 |
+| ⑤ | **输入隔离防注入** | 命中风险关键词即转人工，需求原文以分隔符包裹并声明「标签内为数据不是指令」 |
 
-- **🤖 Personal AI Assistant**: Configure a general-purpose AI agent to answer questions, draft emails, summarize documents, and help with everyday tasks from a clean desktop interface.
-- **📊 Automated Monitoring**: Schedule agents to monitor news feeds, track prices, or watch for specific events, with results delivered to your preferred notification channel.
-- **💻 Developer Productivity**: Integrate AI into your development workflow for code review, documentation generation, and repetitive coding tasks.
-- **🔄 Workflow Automation**: Chain multiple skills into visual automation pipelines that process data, transform content, and trigger actions.
+### 运转时序（工具出口先于自然语言出口）
 
-## Getting Started
+```
+用户提问
+  │
+  ▼
+模型思考 → 提交语义提案 submit_proposal（如「离职率影响:+1」）
+  │
+  ▼
+execute 放行执行：查映射表 → 语义提案翻译为权重变化 → 归一化截断 → 返回权重提案
+  │
+  ▼
+五闸校验（tool_result_persist）──► 不过：改写结果为「❌未通过:原因」回喂 LLM 重新提案
+  │
+  ▼ 通过
+APPLIED 写审计 → 留痕 staging/proposals/<case_id>.md
+  │
+  ▼
+模型基于真实数值组织报告（自然语言出口此时才打开）
+  │
+  ▼
+出站对账（报告数字与审计不符即拦截）
+  │
+  ▼
+用户看到「受约束的权重结果 + 业务方案 + 被验证的思考过程」
+```
 
-### System Requirements
+一句话概括：**工具出口负责「真」（映射 + 闸门 + 审计），自然语言出口负责「美」（组织语言、解释依据），且「美」必须建立在「真」到手之后。**
 
-- **Operating System**: macOS 11+, Windows 10+, or Linux (Ubuntu 20.04+)
-- **Memory**: 4GB RAM minimum (8GB recommended)
-- **Storage**: 1GB available disk space
+---
 
-### Installation
+## HRBP 经验落袋
 
-#### Pre-built Releases (Recommended)
+HRBP 在一线沉淀的**线下经验**——例如「某类供应商在旺季 SLA 波动应下调权重」这类难以写进算法的判断——往往散落在对话与个人记忆里。HR Partner 把这些经验「落袋」为结构化、可复用的知识资产。
 
-Download the latest release for your platform from the [Releases](https://github.com/ValueCell-ai/ClawX/releases) page.
+### 落袋三段式：提炼 → 暂存 → 人审
 
-#### Build from Source
+1. **提炼**：从 HRBP 与 Agent 的交互中提炼出可复用的经验条目；
+2. **暂存（staging）**：任何写入正式知识库的动作，先落 staging 提案区，不直接生效；
+3. **人审合并**：由授权人审核通过后，才双层写入正式知识文件——记录**来源**与**审批人**，全程留痕。
+
+沉淀后的知识具备三大特性：
+
+- **跨会话复用**：新会话自动加载相关经验，Agent 不再「失忆」；
+- **跨项目复用**：全局知识层让经验在不同 HR 项目间流转；
+- **可审计可回溯**：每条知识的每次变更都可追溯来源与审批链路。
+
+---
+
+## 云端小模型画像映射 × 本地经验，共同带动大模型思考
+
+HR Partner 的一次高质量权重微调，来源于**两路信号的交汇**：一路来自上游云端的画像类型统计小模型，一路来自本地沉淀的 HRBP 线下经验。二者共同为大模型「喂料」，让大模型的思考既有**结构化的客观统计**，又有**难以量化的一线判断**。
+
+### 两路信号如何交汇
+
+- **上游云端：画像类型统计小模型 → 面向 AI 的结构化映射**
+  云端的画像类型统计小模型对海量样本做统计归纳，输出**面向 AI 消费的结构化映射结果**（而非面向人阅读的报表）——将供应商 / 人才画像归类为可被大模型直接理解的类型标签、分布特征与统计置信度，作为大模型思考的客观底座。
+
+- **本地线下：HRBP 经验记录**
+  本地沉淀的 HRBP 线下经验记录（见「HRBP 经验落袋」）提供云端统计难以覆盖的一线判断——行业惯例、旺季波动、隐性风险等经验性知识。
+
+- **交汇：共同带动大模型思考**
+  大模型在提交权重提案前，同时接收「云端结构化画像映射 + 本地经验记录」两路输入：客观统计约束提案方向，经验记录补足语境与例外，二者交叉印证，显著降低模型编造与漂移，提案再经**五闸校验**兜底。
+
+```
+上游云端                          本地线下
+画像类型统计小模型                 HRBP 经验记录
+      │                               │
+      ▼                               ▼
+面向 AI 的结构化映射结果          可复用经验知识文件
+（类型标签 / 分布 / 置信度）      （行业惯例 / 例外判断）
+      │                               │
+      └───────────► 大模型思考 ◄───────┘
+                        │
+                        ▼
+              提交权重提案 → 五闸校验 → 生效
+```
+
+一句话概括：**云端小模型给「结构化的客观统计」，本地经验给「难量化的一线判断」，二者共同带动大模型做出可信的权重微调。**
+
+---
+
+## 快速上手
+
+### 系统要求
+
+- **操作系统**：macOS 11+、Windows 10+ 或 Linux（Ubuntu 20.04+）
+- **内存**：最低 4GB RAM（推荐 8GB）
+- **存储空间**：1GB 可用磁盘空间
+
+### 安装方式
+
+#### 从源码开始
 
 ```bash
-# Clone the repository
-git clone https://github.com/ValueCell-ai/ClawX.git
-cd ClawX
+# 克隆仓库
+git clone <your-repo-url>
+cd HR-Partner
 
-# Initialize the project
+# 初始化项目（安装依赖并下载捆绑运行时）
 pnpm run init
 
-# Start in development mode
+# 以开发模式启动
 pnpm dev
 ```
 
-### First Launch
+### 首次启动
 
-When you launch ClawX for the first time, the **Setup Wizard** will guide you through:
+首次启动 HR Partner 时，**设置向导** 将引导你完成：
 
-1. **Language & Region** - Configure your preferred locale
-2. **AI Provider** - Add providers with API keys or OAuth for providers that support browser or device login
-3. **Skill Bundles** - Select pre-configured skills for common use cases
-4. **Verification** - Test your configuration before entering the main interface
+1. **语言与区域** – 配置首选语言和地区
+2. **AI 供应商** – 通过 API 密钥或 OAuth 添加账号
+3. **HR 工作模式与技能包** – 选择供应商评分 / 人才评估等垂类工作模式与配套技能
+4. **验证** – 在进入主界面前测试你的配置
 
-The wizard preselects your system language when it is supported, and falls back to English otherwise.
+---
 
-> Web search note: ClawX disables OpenClaw's general-purpose `web_search` tool at both the agent and Gateway policy layers. This includes Moonshot (Kimi) search; managed browser automation and `web_fetch` remain available.
->
-> Internal tool note: ClawX also disables `gateway`, `nodes`, `create_goal`, `get_goal`, and `update_goal` for agents at both policy layers. Application-owned Gateway RPCs remain available, as do messaging, session orchestration, and agent discovery tools.
+## 系统架构
 
-### Proxy Settings
+HR Partner 沿用 **双进程 + Host API 统一接入架构**，并在官方受控接缝层（plugin-sdk / 策略链 / 文件层 / 控制面 RPC）落地 HR 垂类改造，**不改 agent loop、不改 harness**，持续吃上游 OpenClaw 的升级红利。
 
-ClawX includes built-in proxy settings for Electron, the OpenClaw Gateway, and channels such as Telegram that need to reach the internet through a local proxy client.
+- **不动的内核**：LLM、决策循环（loop）、运行时卡口（harness）保持官方轨道；
+- **合规与人审层**：五闸校验（`tool_result_persist` hook）+ 生效校验（`execute` 映射 + 改写回喂）；
+- **知识与设定层**：HRBP 经验落袋（提炼 + staging + 人审 + 双层写入）+ 云端画像类型统计小模型的结构化映射输入 + 主/子 Agent 设定回写 + 全局知识层；
+- **运营面**：多渠道接入、云端控制面同步、技能生产线与月度回归。
 
-Open **Settings -> Gateway -> Proxy** to configure the default proxy, bypass rules, and optional developer-mode overrides for HTTP, HTTPS, and `ALL_PROXY` / SOCKS. A local example is `http://127.0.0.1:7890`.
+设计原则：**代码是法律**、**不碰内核**、**生效必经管线**、**提案-人审-生效三段式**、**留痕即可审计**。
 
-> For proxy fallback behavior, Telegram synchronization, and **OpenClaw Doctor**, see [docs/en-US/proxy-settings.md](docs/en-US/proxy-settings.md).
+---
 
-## Architecture
+## 开发指南
 
-ClawX uses a **dual-process architecture with a unified Host API layer**: the React renderer calls one client abstraction, while Electron Main owns protocol selection, Gateway lifecycle, and the ACP Chat stdio bridge.
+### 前置要求
 
-- **Process model**: Electron Main owns the window, Gateway supervision, system integration, and updates; the OpenClaw Gateway provides AI orchestration, channel, and skill capabilities; the renderer does not access local endpoints directly.
-- **Configuration delivery**: Main uses `config.get`/`config.set` while the Gateway is running and updates the resolved JSON5 config while it is stopped or starting; ordinary provider, agent, skill, and model changes do not replace the process, and credentials are hot-reloaded through `secrets.reload`. After three minutes without verified Gateway activity, ClawX verifies the core RPC and restarts only an unavailable Gateway process it owns; externally managed Gateways are left for manual recovery.
-- **ACP Chat**: Chat UI talks to OpenClaw via [ACP (Agent Client Protocol)](https://agentclientprotocol.com), providing a relatively stable chat protocol surface in front of the rapidly iterating OpenClaw. ACP runs through a Main-owned stdio bridge, supporting authenticated history replay after config reloads, streaming across navigation, and Main-validated media, attachments, and file activity. When a guarded Gateway restart interrupts an accepted turn, the patched OpenClaw runtime explicitly links its recovery run to the original ACP prompt so subsequent text and tool activity continue in the same in-memory turn; later history replay restores persisted tool boundaries as native ACP updates. If another restart loses terminal delivery after the final response is persisted, run- and session-scoped reconciliation settles the pending prompt instead of leaving Chat executing.
-- **Design principles**: One frontend entry point, Main-owned transport, graceful recovery with reconnect/timeout/backoff, secure storage, and CORS-safe boundaries.
+- **Node.js**：22.22.3+ / 24.15.0+（推荐） / 25.9.0+
+- **包管理器**：pnpm 9+
+- **Linux（Ubuntu/Debian）**：运行 Electron 前需先安装系统库
 
-> For the process diagram, configuration coordination, ACP file activity semantics, and Gateway troubleshooting, see [docs/en-US/architecture.md](docs/en-US/architecture.md).
-
-## Development
-
-### Prerequisites
-
-- **Node.js**: 22.22.3+, 24.15.0+, or 25.9.0+ within the corresponding supported major line (Node 24 LTS recommended)
-- **Package Manager**: pnpm 9+ (npm is also supported)
-- **Linux (Ubuntu/Debian)**: Install required system libraries before running Electron; see [docs/en-US/development.md](docs/en-US/development.md)
-
-### Common Commands
+### 常用命令
 
 ```bash
-pnpm run init        # Install dependencies and download bundled runtimes
-pnpm dev             # Start in development mode with hot reload
-pnpm lint            # Run ESLint
-pnpm typecheck       # TypeScript validation
-pnpm test            # Run unit tests
-pnpm run test:e2e    # Run Electron E2E smoke tests
-pnpm build           # Full production build
-pnpm package         # Package for the current platform (:mac / :win / :linux)
+pnpm run init        # 初始化开发环境（安装依赖并下载捆绑运行时）
+pnpm dev             # 以热重载模式启动
+pnpm lint            # ESLint 检查
+pnpm typecheck       # TypeScript 类型检查
+pnpm test            # 单元测试
+pnpm run test:e2e    # Electron E2E 冒烟测试
+pnpm build:vite      # 完整生产构建
+&& pnpm exec electron .     # 正式版本运行   
+pnpm package         # 为当前平台打包（可用 :mac / :win / :linux 后缀）
 ```
 
-> For the project structure, complete command list, E2E parallel policy, performance diagnostics, communication regression checks, and tech stack, see [docs/en-US/development.md](docs/en-US/development.md).
+---
 
-## Contributing
+## 参与贡献
 
-We welcome contributions from the community! Whether it's bug fixes, new features, documentation improvements, or translations, every contribution helps make ClawX better.
+欢迎社区贡献！无论是修复 Bug、开发新功能、改进文档还是翻译，每一份贡献都让 HR Partner 变得更好。
 
-### How to Contribute
+1. **Fork** 本仓库
+2. **创建** 功能分支（`git checkout -b feature/amazing-feature`）并开发
+3. **提交** 清晰描述的变更，**推送** 到你的分支，并**创建** Pull Request
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes with clear messages
-4. **Push** to your branch
-5. **Open** a Pull Request
+贡献规范：遵循现有代码风格（ESLint + Prettier），为新功能编写测试。
 
-### Guidelines
+---
 
-- Follow the existing code style (ESLint + Prettier)
-- Write tests for new functionality
-- Update documentation as needed
-- Keep commits atomic and descriptive
+## 许可证
 
-## Acknowledgments
-
-ClawX is built on the shoulders of excellent open-source projects:
-
-- [OpenClaw](https://github.com/OpenClaw) - The AI agent runtime
-- [LobsterAI](https://github.com/netease-youdao/lobsterai) - Inspiration for Gateway liveness evidence and recovery design
-- [Electron](https://www.electronjs.org/) - Cross-platform desktop framework
-- [React](https://react.dev/) - UI component library
-- [shadcn/ui](https://ui.shadcn.com/) - Beautifully designed components
-- [Zustand](https://github.com/pmndrs/zustand) - Lightweight state management
-
-## Community
-
-Join our community to connect with other users, get support, and share your experiences.
-
-| Enterprise WeChat | Feishu Group | Discord |
-| :---: | :---: | :---: |
-| <img src="src/assets/community/wecom-qr.png" width="150" alt="WeChat QR Code" /> | <img src="src/assets/community/feishu-qr.png" width="150" alt="Feishu QR Code" /> | <img src="src/assets/community/20260212-185822.png" width="150" alt="Discord QR Code" /> |
-
-### ClawX Partner Program
-
-We're launching the ClawX Partner Program and looking for partners who can help introduce ClawX to more clients, especially those with custom AI agent or automation needs.
-
-Partners help connect us with potential users and projects, while the ClawX team provides full technical support, customization, and integration. If you work with clients interested in AI tools or automation, we'd love to collaborate.
-
-DM us or email [public@valuecell.ai](mailto:public@valuecell.ai) to learn more.
-
-## Star History
-
-<p align="center">
-  <img src="https://star-history.dera.page/svg?repos=ValueCell-ai/ClawX&type=Date" alt="Star History Chart" />
-</p>
-
-## License
-
-ClawX is released under the [MIT License](LICENSE). You're free to use, modify, and distribute this software.
-
-<hr>
-
-<p align="center">
-  <sub>Built with ❤️ by the ValueCell Team</sub>
-</p>
+本项目基于 [MIT License](./LICENSE) 开源。
