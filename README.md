@@ -17,19 +17,19 @@
 LLM 的每一条输出，都必须穿过**五道机器闸门**才允许生效；任何一环失败，即回落到纯算法权重，业务流程永不中断。与此同时，HRBP（HR Business Partner）在一线积累的**线下经验**会被持续「落袋」为可跨会话、跨项目复用的知识资产。
 
 <p align="center">
-  <img src=".resources/screenshot/首页.png" alt="HR Partner 概览" width="720" />
+  <img src="resources/screenshot/首页.png" alt="HR Partner 概览" width="720" />
 </p>
 <p align="center">
-  <img src=".resources/screenshot/模式.png" alt="HR Partner 概览" width="720" />
+  <img src="resources/screenshot/模式.png" alt="HR Partner 概览" width="720" />
 </p>
 <p align="center">
-  <img src=".resources/screenshot/线下经验.png" alt="HR Partner 概览" width="720" />
+  <img src="resources/screenshot/线下经验.png" alt="HR Partner 概览" width="720" />
 </p>
 <p align="center">
-  <img src=".resources/screenshot/合理用工数.png" alt="HR Partner 概览" width="720" />
+  <img src="resources/screenshot/合理用工数.png" alt="HR Partner 概览" width="720" />
 </p>
 <p align="center">
-  <img src=".resources/screenshot/多供应商分单.png" alt="HR Partner 概览" width="720" />
+  <img src="resources/screenshot/多供应商分单.png" alt="HR Partner 概览" width="720" />
 </p>
 ---
 
