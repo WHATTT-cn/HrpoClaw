@@ -31,6 +31,7 @@ LLM 的每一条输出，都必须穿过**五道机器闸门**才允许生效；
 <p align="center">
   <img src="resources/screenshot/多供应商分单.png" alt="HR Partner 概览" width="720" />
 </p>
+
 ---
 
 ## 核心能力
