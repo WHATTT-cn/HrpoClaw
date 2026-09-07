@@ -34,6 +34,9 @@ import { ChatInput, type ChatWorkspaceOption, type FileAttachment } from './Chat
 import { ChatToolbar } from './ChatToolbar';
 import { AcpTimeline } from './AcpTimeline';
 import { AcpErrorBanner } from './AcpErrorBanner';
+import { SupplierPortraitDashboard } from './SupplierPortraitDashboard';
+
+const PRESET_PO_AGENT_ID = 'po';
 
 const ArtifactPanelLazy = lazy(() =>
   import('@/components/file-preview/ArtifactPanel').then((m) => ({ default: m.ArtifactPanel })),
@@ -472,6 +475,11 @@ export function Chat() {
       )}
       style={{ height: isMac ? 'calc(100vh - 1px)' : 'calc(100vh - 2.5rem)' }}
     >
+      {currentAgentId === PRESET_PO_AGENT_ID && (
+        <aside className="hidden w-1/2 shrink-0 border-r border-black/5 dark:border-white/10 lg:flex lg:flex-col">
+          <SupplierPortraitDashboard />
+        </aside>
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className={cn(
           'relative flex shrink-0 items-center px-4 py-2',

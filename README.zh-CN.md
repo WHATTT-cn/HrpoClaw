@@ -177,7 +177,8 @@ pnpm lint            # ESLint 检查
 pnpm typecheck       # TypeScript 类型检查
 pnpm test            # 单元测试
 pnpm run test:e2e    # Electron E2E 冒烟测试
-pnpm build           # 完整生产构建
+pnpm build:vite      # 完整生产构建
+&& pnpm exec electron .     # 正式版本运行     
 pnpm package         # 为当前平台打包（可用 :mac / :win / :linux 后缀）
 ```
 

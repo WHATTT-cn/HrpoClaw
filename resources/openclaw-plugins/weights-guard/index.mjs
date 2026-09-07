@@ -1,75 +1,35 @@
 /**
- * weights-guard 薄入口（A 路本地内建插件）。
+ * weights-guard 薄入口（A 路本地内建插件，重构后）。
  *
- * 职责边界（Q6）：本文件仅做「接线」，不含任何业务逻辑。
- * 五道闸门核心逻辑全部在 monorepo（openclaw-guard-suite/plugins/weights-guard），
- * 经 tsup 打包成自包含的 handler.bundle.mjs（零运行时依赖）由此处 import。
+ * 职责边界：本文件仅做「接线」，不含业务逻辑。
+ * 插件已从「before_tool_call 五闸拦截」重构为「before_prompt_build 纯提示词指引」：
+ * - 不注册工具、不拦截调用、不做人审。
+ * - 唯一作用： PO agent 系统上下文注入用工决策强制流程指引，
+ *   要求回答前读取《供应商画像.md》与《Experience.md》并原文回显真实事实。
  *
- * 接线要点：
- * 1. definePluginEntry 定义插件入口；register(api) 内注册 before_tool_call hook。
- * 2. 上游 hook 真身契约（记忆 project_openclaw_hook_contract 实测固化）：
- *    - return(void)               → 放行
- *    - return {block, blockReason} → 拦截
- *    - return {params:{...}}       → 改写入参后放行
- * 3. 插件配置从 api.pluginConfig（可选 Record）浅合并进 DEFAULT_CONFIG。
- * 4. 安全红线（全局规则 5）：任何异常一律 fail-closed（拦截），绝不「出错就放行」。
+ * 指引正文由 monorepo 源码（openclaw-guard-suite/plugins/weights-guard/src/guidance.ts）
+ * 经 tsup 打包为 handler.bundle.mjs 后在此 import。
  */
 
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import {
-  handleBeforeToolCall,
-  DEFAULT_CONFIG,
-} from "./handler.bundle.mjs";
+import { buildPromptInjection } from "./handler.bundle.mjs";
 
 const PLUGIN_ID = "weights-guard";
-
-/** 把 api.pluginConfig 里的已知数值/布尔项浅合并进默认配置，未知项忽略。 */
-function resolveConfig(pluginConfig) {
-  const cfg = { ...DEFAULT_CONFIG };
-  if (pluginConfig && typeof pluginConfig === "object") {
-    const { amplitudeRange, evidenceTolerance, approvalTimeoutMinutes, fallbackToAlgorithm } =
-      pluginConfig;
-    if (typeof amplitudeRange === "number") cfg.amplitudeRange = amplitudeRange;
-    if (typeof evidenceTolerance === "number") cfg.evidenceTolerance = evidenceTolerance;
-    if (typeof approvalTimeoutMinutes === "number") cfg.approvalTimeoutMinutes = approvalTimeoutMinutes;
-    if (typeof fallbackToAlgorithm === "boolean") cfg.fallbackToAlgorithm = fallbackToAlgorithm;
-  }
-  return cfg;
-}
 
 export const pluginEntry = definePluginEntry({
   id: PLUGIN_ID,
   name: "Weights Guard",
   description:
-    "Fail-closed safety gates for compliance weight adjustments: LLM proposes, code is law.",
+    "Inject PO workforce-decision guidance: read authoritative portrait/experience docs and echo real facts before answering.",
   register(api) {
-    const config = resolveConfig(api?.pluginConfig);
-
-    api.registerHook("before_tool_call", async (event) => {
-          try {
-        // 上游事件真身：{ toolName, params, ... }。
-        // toolName 守卫（Q-A 白名单式）由 handleBeforeToolCall 内部执行：
-        // 仅 submit_proposal 进五闸，其余工具及 toolName 缺失一律放行（返回 undefined）。
-        const params = event?.params ?? {};
-        const result = handleBeforeToolCall(params, config, event?.toolName);
-
-        // 中性 HookResult → 上游真身：
-        if (result?.block) {
-          return { block: true, blockReason: result.blockReason };
-        }
-        if (result?.params) {
-          return { params: result.params };
-        }
-        // 无改写、无拦截 → 放行。
+    // before_prompt_build 真身契约：返回 { prependSystemContext } 追加到系统上下文。
+    // 静态规则文本、不含用户数据，可被 provider 缓存，零 per-turn 成本。
+    api.registerHook("before_prompt_build", async () => {
+      try {
+        return buildPromptInjection();
+      } catch {
+        // 指引注入失败不应阻断对话：静默降级不注入。
         return undefined;
-      } catch (err) {
-        // fail-closed：接线层任何异常一律拦截，绝不放行。
-        return {
-          block: true,
-          blockReason: `weights-guard 接线层异常，已 fail-closed 拦截：${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        };
       }
     });
   },

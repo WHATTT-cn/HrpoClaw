@@ -1,0 +1,16 @@
+{
+  "name": "experience-capture-plugin",
+  "version": "0.1.0",
+  "description": "ClawX experience-capture: capture offline PO experience into a knowledge base with human approval in OpenClaw",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  }
+}
