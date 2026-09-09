@@ -1,0 +1,13 @@
+{
+  "id": "equipment-guard",
+  "name": "Equipment Guard",
+  "description": "APX-240 设备故障诊断指引注入：在 before_prompt_build 阶段为 FDE agent 注入强制诊断流程，要求回答前读取《自动封装说明书.md》并按 8 字段结构（故障现象/已知事实/可能原因/证据来源/安全前置条件/排查顺序/需要补充的信息/停止条件·升级）原文回显证据，遵守 SAFE-01~05 安全红线。不拦截工具、不做人审。",
+  "version": "0.1.0",
+  "entry": "index.mjs",
+  "enabledByDefault": true,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

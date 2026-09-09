@@ -325,6 +325,14 @@ const TRUSTED_OFFICIAL_EXTENSION_PLUGINS: Record<string, TrustedOfficialExtensio
     npmName: 'experience-capture-plugin',
     recordSource: 'path',
   },
+  // equipment-guard is a ClawX-local, pure-guidance guard plugin shipped as
+  // source under resources/openclaw-plugins/equipment-guard/ (not published to
+  // npm). Keep it path-owned so startup migration never tries to fetch/replace
+  // it from a registry.
+  'equipment-guard': {
+    npmName: 'equipment-guard-plugin',
+    recordSource: 'path',
+  },
 };
 
 type TrustedOfficialPluginInstallRecord = Record<string, unknown> & {
@@ -971,6 +979,14 @@ export function ensureExperienceCapturePluginInstalled(): Promise<PluginInstallR
     'experience-capture',
     buildCandidateSources('experience-capture'),
     'Experience Capture',
+  );
+}
+
+export function ensureEquipmentGuardPluginInstalled(): Promise<PluginInstallResult> {
+  return ensurePluginInstalled(
+    'equipment-guard',
+    buildCandidateSources('equipment-guard'),
+    'Equipment Guard',
   );
 }
 

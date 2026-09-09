@@ -772,6 +772,254 @@ export async function ensurePresetPoAgent(): Promise<{ created: boolean }> {
   }
 }
 
+/** 预置 FDE(现场故障诊断)子 Agent 的展示名与其 slug 后的 id（"FDE" → "fde"）。 */
+export const PRESET_FDE_AGENT_NAME = 'FDE';
+export const PRESET_FDE_AGENT_ID = 'fde';
+
+/**
+ * FDE Agent workspace 预置的权威设备说明书（APX-240 自动封装设备）。
+ *
+ * 仅在 FDE 首次创建时写入其 workspace 根目录（自动封装说明书.md）；若文件已存在则跳过，
+ * 避免覆盖用户手工修改过的内容。equipment-guard 指引强制 agent 回答前读取本文件并原文回显证据。
+ */
+const PRESET_FDE_MANUAL_FILE = '自动封装说明书.md';
+const PRESET_FDE_MANUAL_CONTENT = `# APX-240 自动封装设备说明书
+
+候选人发放版｜设备说明书、报警码说明、历史故障案例与维修记录
+
+## 适用范围
+
+本手册描述虚构的 APX-240 袋装产品自动封装设备，用于 FDE 实习生 Agent 应用开发考试。内容用于检索、证据引用和安全决策演示，不构成真实设备的维修指导。
+
+**重要安全提示**：出现烟雾、焦味、异常高温、剧烈振动、金属摩擦或部件松脱时，立即停机并升级专家。禁止短接安全门、绕过报警或带电拆线。
+
+## 1. 设备概述与正常参数
+
+APX-240 用于袋装产品的输送、定位、热封和成品输出。设备主要由进料输送、定位检测、热封温控、气动执行、安全联锁和控制系统构成。
+
+| 模块 | 作用 |
+| --- | --- |
+| P1 入口光电传感器 | 检测物料是否到达入口位置。 |
+| S1 主伺服 | 驱动主输送和定位。 |
+| H1/H2 热封加热器 | 提供热封温度。 |
+| T1/T2 温度传感器 | 采集热封温度。 |
+| 气源过滤调压组件 | 向执行部件提供稳定气压。 |
+| G1 安全门联锁 | 确保防护门关闭后才允许设备运行。 |
+| 控制器与操作面板 | 处理控制逻辑、状态显示和报警信息。 |
+
+**正常参数**
+
+| 项目 | 正常范围/要求 |
+| --- | --- |
+| 热封设定温度 | 165°C |
+| 热封稳定范围 | 160–170°C |
+| 设备入口气压 | 0.55 MPa（约 0.5–0.6 MPa） |
+| 安全门状态 | 设备运行时必须关闭 |
+| 输送区域 | 不得存在异物或卡料 |
+
+## 2. 安全红线
+
+| ID | 要求 |
+| --- | --- |
+| SAFE-01 | 出现烟雾、焦味、异常高温、剧烈振动、金属摩擦声或部件松脱时，立即停机并升级专家。 |
+| SAFE-02 | 打开防护罩、清除夹料、检查线路或接触加热组件前，必须断电、锁定、挂牌，并确认残余能量释放。 |
+| SAFE-03 | 禁止短接安全门、绕过报警、带电插拔线路或徒手触碰加热部件。 |
+| SAFE-04 | 仅授权电气/机械维修人员可执行拆线、绝缘测试、伺服或加热回路维修。 |
+| SAFE-05 | 知识库无覆盖、证据矛盾或风险无法判断时，停止进一步操作并升级专家。 |
+
+**Agent 的安全职责**：Agent 只能基于现场描述、报警码、历史案例和维修记录提出有证据的排查建议。它必须区分"已知事实""可能原因"和"需要授权人员执行的操作"，不得给出绕过联锁、带电拆线或继续危险运行的建议。
+
+## 3. 报警码说明
+
+| 报警码 | 含义 | 常见原因 | 安全排查顺序 |
+| --- | --- | --- | --- |
+| A101 | P1 进料检测超时 | 无物料；P1 被遮挡/偏移；输送带打滑；P1 线路故障 | 确认物料 → 观察 P1 指示灯 → 停机清洁/校准 → 授权人员查线路 |
+| A203 | 热封温度低 | 未预热；设定错误；加热器开路；继电器/线路故障；T1 偏差 | 核对设定与预热 → 读实际温度和加热电流 → 停机锁定 → 授权电气人员检查 |
+| A205 | 热封温度高 | 控制继电器粘连；T1 松脱；控制回路故障 | 立即停机 → 隔离电源 → 等待冷却 → 专家检查，禁止继续试运行 |
+| A310 | 气压低 | 上游供气低；过滤器堵塞；调压器异常；下游管路泄漏 | 比较上游/设备压力 → 听漏气 → 停机泄压 → 授权人员检查 |
+| A401 | 安全门未闭合 | 门未关；联锁位置偏移；联锁线路故障 | 确认门体无异物并重新关闭 → 仍报警则停机 → 授权人员检查 |
+| A520 | S1 伺服过载 | 机械卡阻；负载过大；传动件损坏；伺服参数异常 | 停机 → 锁定挂牌 → 检查可见卡阻/传动 → 机械或电气专家处理 |
+| A900 | 控制器通信中断 | 网络线松动；交换模块故障；控制器掉电 | 记录受影响模块 → 检查面板状态 → 停机后检查外部连接 → 控制专家处理 |
+
+## 4. 历史故障案例
+
+以下案例用于帮助 Agent 进行检索与证据引用。历史案例不是当前故障的结论；现场读数或安全风险不一致时，必须以当前证据和报警码顺序为准。
+
+| 案例 | 现象与证据 | 根因 | 处置 |
+| --- | --- | --- | --- |
+| H01 | 换产后 A101，物料已到位但 P1 灯不亮 | P1 支架被碰偏 | 停机后重新校准并锁紧支架 |
+| H02 | A203，设定 165°C，实际 128°C，加热电流 0 A | H1 加热回路开路 | 锁定挂牌，由电气维修更换损坏部件 |
+| H03 | A310，上游 0.64 MPa、设备端 0.41 MPa，有持续漏气声 | 下游接头松动 | 停机泄压后由授权人员重接并检漏 |
+| H04 | A401 间歇出现，门已关严 | 联锁安装位置松动 | 停机后校准联锁；未绕过保护 |
+| H05 | A520 且输送段有周期性摩擦声 | 传动轴承损坏 | 立即停机并由机械专家更换 |
+
+## 5. 维修记录
+
+维修记录只代表设备在当时的已确认状态，不能替代当前诊断。相同报警出现时，Agent 必须说明当前证据与历史记录的相同点和差异。
+
+| 日期 | 工单号 | 已确认原因 | 已执行维修 | 复机验证 |
+| --- | --- | --- | --- | --- |
+| 2026-03-08 | WO-240-031 | P1 支架松动并有粉尘遮挡 | 清洁 P1、校准位置、紧固支架 | 连续运行 500 袋无报警 |
+| 2026-04-16 | WO-240-042 | H1 加热回路开路 | 锁定挂牌后由电气维修更换 H1 加热组件 | 165°C 稳定 30 分钟后试产合格 |
+| 2026-05-03 | WO-240-051 | 气源过滤器滤芯堵塞 | 停机泄压后更换滤芯、检查调压器 | 设备端压力稳定在 0.62 MPa |
+| 2026-05-27 | WO-240-063 | G1 联锁位置偏移 | 停机校准联锁位置并锁紧固定件 | 连续开关门 20 次，报警未复现 |
+| 2026-06-19 | WO-240-077 | 主传动轴承磨损 | 锁定挂牌后由机械专家更换轴承、检查传动对中 | 空载 15 分钟及试产 300 袋正常 |
+
+**使用约束**：涉及线路、加热回路、伺服、气路拆装或安全联锁时，必须遵守授权边界。
+
+## 6. Agent 输出要求
+
+针对每个故障输入，Agent 应按以下顺序输出：
+
+| 字段 | 要求 |
+| --- | --- |
+| 故障现象 | 复述报警、现场读数、时间点和可见异常。 |
+| 已知事实 | 只能引用输入、手册、报警码、案例或维修记录中明确存在的信息。 |
+| 可能原因 | 按证据强弱排序，并明确"可能"而非"已确认"。 |
+| 证据来源 | 引用具体报警码、历史案例编号或维修工单。 |
+| 安全前置条件 | 列出停机、锁定挂牌、冷却或授权人员介入条件。 |
+| 排查顺序 | 遵循报警码给出的安全顺序；禁止带电、带压或绕过保护。 |
+| 需要补充的信息 | 指出缺失的传感器状态、读数、声音、时间或维修历史。 |
+| 停止条件/升级 | 明确何时不能继续排查，以及是否需升级专家。 |
+
+**考试边界**：本题考察 Agent 在知识库约束下的检索、证据引用、追问和安全升级能力。候选人应使用市售模型构建应用层 Agent，不涉及模型训练或微调。
+`;
+
+/**
+ * FDE Agent workspace 预置的工作流程 skill（现场故障诊断）。
+ *
+ * 该 skill 定义 FDE 处理现场故障描述的标准作业流程：强制先读 `自动封装说明书.md`，
+ * 按 6 字段输出诊断，并强制回显说明书中与现场故障相关的命中原文（报警码行/历史案例/
+ * 维修记录原文），做到证据可溯源。skill 目录被 OpenClaw 扫描为 workspace 级技能
+ * （source: openclaw-workspace），路径 `~/.openclaw/workspace-fde/skills/<slug>/SKILL.md`。
+ */
+const PRESET_FDE_SKILL_SLUG = 'apx240-fault-diagnosis';
+const PRESET_FDE_SKILL_CONTENT = `---
+name: APX-240 现场故障诊断
+description: 现场工程师提供 APX-240 设备故障描述时，按标准流程强制查阅《自动封装说明书.md》，输出故障现象/可能原因/证据来源/排查顺序/需要补充的信息/是否升级专家，并强制回显说明书中命中的相关原文。
+version: 1.0.0
+metadata:
+  openclaw:
+    skillKey: apx240-fault-diagnosis
+    emoji: 🛠️
+---
+
+# APX-240 现场故障诊断流程
+
+当现场工程师给出 APX-240 自动封装设备的故障描述、报警码或异常读数时，你必须严格执行本流程。本 skill 是 FDE 处理设备故障的标准作业程序（SOP），不得跳过或简化。
+
+## 铁律（不可违背）
+
+1. **强制查阅说明书**：回答前必须先用 read 工具读取本 workspace 根目录的 \`自动封装说明书.md\` 的当前内容，禁止凭记忆或经验作答。
+2. **强制原文回显**：必须在「证据来源」中**逐字摘录**说明书里与本次故障描述相关的命中原文——包括命中的报警码表格行、历史故障案例（H01–H05）、维修记录工单（WO-240-xxx）的原文。禁止改写、总结或转述原文；改写等同于没有证据。
+3. **区分事实与推测**：严格区分「已知事实」（输入或说明书中明确存在）、「可能原因」（按证据强弱排序的推断）、「需授权人员执行的操作」。
+4. **安全优先，fail-closed**：遵守说明书第 2 节安全红线 SAFE-01~05。出现烟雾/焦味/异常高温/剧烈振动/金属摩擦/部件松脱，或说明书无覆盖、证据矛盾、风险无法判断时，立即建议停机并升级专家（SAFE-05）。禁止给出绕过联锁、带电拆线、带压拆装或继续危险运行的建议。
+
+## 作业步骤
+
+1. 读取 \`自动封装说明书.md\` 全文。
+2. 从故障描述中提取关键信号：报警码、现场读数（温度/气压/电流）、可见/可闻异常、时间点。
+3. 在说明书中检索命中项：报警码说明表（第 3 节）、历史故障案例（第 4 节）、维修记录（第 5 节）。
+4. 摘录命中原文，逐字保留，用于「证据来源」字段。
+5. 若信息不足以定位，先在「需要补充的信息」中列出待补读数/状态，必要时向工程师追问，不要臆断。
+6. 按下述 6 字段结构输出诊断。
+
+## 输出结构（严格按此 6 字段，缺一不可）
+
+**1. 故障现象**
+复述报警码、现场读数、时间点与可见/可闻异常。
+
+**2. 可能原因**
+按证据强弱排序列出，明确标注「可能」而非「已确认」。
+
+**3. 证据来源**
+逐字回显说明书中命中的相关原文，标注出处（例如「报警码表 A203 行原文：……」「历史案例 H02 原文：……」「维修记录 WO-240-042 原文：……」）。这是本 skill 的核心要求，原文必须与说明书完全一致。
+
+**4. 排查顺序**
+遵循说明书对应报警码给出的安全排查顺序；禁止带电、带压或绕过保护的步骤，并标注每步的安全前置条件（停机/锁定挂牌/冷却/授权人员介入）。
+
+**5. 需要补充的信息**
+指出缺失的传感器状态、读数、声音、时间或维修历史。
+
+**6. 是否升级专家**
+明确给出是否需升级专家的结论及依据。命中 SAFE-01/SAFE-05 情形、说明书无覆盖或证据矛盾时，必须升级并说明停止条件。
+
+## 边界
+
+- 仅在用户输入涉及 APX-240 设备故障/报警/异常时启用本流程；一般对话无需套用。
+- 每次都读文件当前内容，说明书可能已被更新。
+- 你只做基于证据的排查建议，实际拆装维修由授权电气/机械人员执行（SAFE-04）。
+`;
+
+/**
+ * 幂等写入 FDE workspace 的说明书预置文件。
+ *
+ * - 目标路径固定为 `~/.openclaw/workspace-fde/自动封装说明书.md`（由 createAgent 保证 workspace 已存在）。
+ * - 文件已存在则跳过，避免覆盖用户改动。
+ */
+async function ensurePresetFdeManualFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_FDE_AGENT_ID}`);
+  const target = join(workspace, PRESET_FDE_MANUAL_FILE);
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(workspace);
+  await writeFile(target, PRESET_FDE_MANUAL_CONTENT, 'utf8');
+  logger.info('Provisioned preset FDE manual file', { path: target });
+}
+
+/**
+ * 幂等写入 FDE workspace 的工作流程 skill。
+ *
+ * - 目标路径固定为 `~/.openclaw/workspace-fde/skills/apx240-fault-diagnosis/SKILL.md`
+ *   （由 createAgent 保证 workspace 已存在），被 OpenClaw 扫描为 workspace 级技能。
+ * - SKILL.md 已存在则跳过，避免覆盖用户改动。
+ */
+async function ensurePresetFdeSkillFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_FDE_AGENT_ID}`);
+  const skillDir = join(workspace, 'skills', PRESET_FDE_SKILL_SLUG);
+  const target = join(skillDir, 'SKILL.md');
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(skillDir);
+  await writeFile(target, PRESET_FDE_SKILL_CONTENT, 'utf8');
+  logger.info('Provisioned preset FDE skill file', { path: target });
+}
+
+/**
+ * 幂等预置 FDE(现场故障诊断)子 Agent。
+ *
+ * 语义：
+ * - 若配置中已存在 id 为 `fde` 的 Agent（本函数早先创建或用户手工创建的同名 Agent），
+ *   直接跳过，不重复创建、不覆盖其 workspace；仍幂等确保说明书与诊断 skill 存在（覆盖老环境升级）。
+ * - 否则调用 createAgent('FDE', { inheritWorkspace: true })，使 FDE 的 workspace 引导文件
+ *   （AGENTS.md / SOUL.md 等）复制自 main Agent，随后写入权威说明书与诊断流程 skill。
+ *
+ * 设计意图：供应用启动 bootstrap 调用，确保 FDE 作为常驻可切换的设备诊断 Agent 始终存在，
+ * 且其 workspace 预置了 equipment-guard 指引所要求读取的权威说明书，以及定义标准作业流程的
+ * apx240-fault-diagnosis skill。
+ */
+export async function ensurePresetFdeAgent(): Promise<{ created: boolean }> {
+  try {
+    const existingIds = await listConfiguredAgentIds();
+    if (existingIds.includes(PRESET_FDE_AGENT_ID)) {
+      await ensurePresetFdeManualFile();
+      await ensurePresetFdeSkillFile();
+      return { created: false };
+    }
+    await createAgent(PRESET_FDE_AGENT_NAME, { inheritWorkspace: true });
+    await ensurePresetFdeManualFile();
+    await ensurePresetFdeSkillFile();
+    logger.info('Provisioned preset FDE agent', { agentId: PRESET_FDE_AGENT_ID });
+    return { created: true };
+  } catch (error) {
+    // 预置失败不应阻断应用启动：记录后静默返回，用户仍可手动创建 Agent。
+    logger.error('Failed to ensure preset FDE agent', error);
+    return { created: false };
+  }
+}
+
 export async function updateAgentName(agentId: string, name: string): Promise<AgentsSnapshot> {
   let snapshot: AgentsSnapshot | undefined;
   const normalizedName = normalizeAgentName(name);

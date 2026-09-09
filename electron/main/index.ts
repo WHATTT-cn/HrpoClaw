@@ -52,8 +52,9 @@ import { ensureBuiltinSkillsInstalled, ensurePreinstalledSkillsInstalled, trimBu
 import {
   ensureWeightsGuardPluginInstalled,
   ensureExperienceCapturePluginInstalled,
+  ensureEquipmentGuardPluginInstalled,
 } from '../utils/plugin-install';
-import { ensurePresetPoAgent } from '../utils/agent-config';
+import { ensurePresetPoAgent, ensurePresetFdeAgent } from '../utils/agent-config';
 
 import { deviceOAuthManager } from '../utils/device-oauth';
 import { browserOAuthManager } from '../utils/browser-oauth';
@@ -474,11 +475,31 @@ async function initialize(): Promise<void> {
     });
   }
 
+  // equipment-guard is a ClawX-local, pure-guidance hook plugin (APX-240
+  // fault-diagnosis flow injection via before_prompt_build). Like weights-guard
+  // it must be mirrored into ~/.openclaw/extensions/ before the Gateway loads,
+  // independent of any channel configuration. Deploy it every startup,
+  // fire-and-forget.
+  if (!isE2EMode) {
+    void ensureEquipmentGuardPluginInstalled().catch((error) => {
+      logger.warn('Failed to install/upgrade Equipment Guard plugin:', error);
+    });
+  }
+
   // Provision the preset "PO" agent on first launch (idempotent). This mirrors
   // the main agent's workspace so weights-guard can auto-switch to it later.
   if (!isE2EMode) {
     void ensurePresetPoAgent().catch((error) => {
       logger.warn('Failed to provision preset PO agent:', error);
+    });
+  }
+
+  // Provision the preset "FDE" (field diagnosis engineer) agent on first launch
+  // (idempotent). Its workspace is pre-seeded with the authoritative APX-240
+  // manual so equipment-guard's guidance can require reading it before answering.
+  if (!isE2EMode) {
+    void ensurePresetFdeAgent().catch((error) => {
+      logger.warn('Failed to provision preset FDE agent:', error);
     });
   }
 
