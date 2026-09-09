@@ -1,0 +1,26 @@
+{
+  "id": "po-decisions",
+  "name": "PO Decisions",
+  "description": "采购(PO)用工分单决策登记 + 人审可写看板:模型识别已确认的用工决策后调用 record_decision 工具,插件在 before_tool_call 拦截并发起人审弹窗,用户确认后写入 ~/.openclaw/workspace-po/用工决策.json;另提供 read_decision 供模型查重。",
+  "version": "0.1.0",
+  "entry": "index.mjs",
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "approvalTimeoutMinutes": {
+        "type": "number",
+        "description": "人审弹窗等待超时(分钟)。默认 5。",
+        "default": 5,
+        "minimum": 1
+      },
+      "timeoutBehavior": {
+       "type": "string",
+        "description": "审批超时行为:deny=不写入(默认) / allow=按允许处理。",
+        "enum": ["allow", "deny"],
+        "default": "deny"
+      }
+    }
+  }
+}

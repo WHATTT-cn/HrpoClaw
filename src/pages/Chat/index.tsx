@@ -35,8 +35,47 @@ import { ChatToolbar } from './ChatToolbar';
 import { AcpTimeline } from './AcpTimeline';
 import { AcpErrorBanner } from './AcpErrorBanner';
 import { SupplierPortraitDashboard } from './SupplierPortraitDashboard';
+import { SupplierDecisionDashboard } from './SupplierDecisionDashboard';
 
 const PRESET_PO_AGENT_ID = 'po';
+
+type PoDashboardTab = 'portrait' | 'decision';
+
+/**
+ * PO agent 左侧看板面板：画像看板（只读）/ 决策看板（可写）双 Tab 切换（方案 A）。
+ * 两个看板互不替换，用户可自由在两者间切换。
+ */
+function PoDashboardPanel() {
+  const [tab, setTab] = useState<PoDashboardTab>('portrait');
+  const tabs: { key: PoDashboardTab; label: string }[] = [
+    { key: 'portrait', label: '供应商画像' },
+    { key: 'decision', label: '用工决策' },
+  ];
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 gap-1 border-b border-black/5 px-3 pt-3 dark:border-white/10">
+        {tabs.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => setTab(item.key)}
+            className={cn(
+              'rounded-t-lg px-3 py-1.5 text-xs font-medium transition-colors',
+              tab === item.key
+                ? 'bg-black/5 text-foreground dark:bg-white/10'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1">
+        {tab === 'portrait' ? <SupplierPortraitDashboard /> : <SupplierDecisionDashboard />}
+      </div>
+    </div>
+  );
+}
 
 const ArtifactPanelLazy = lazy(() =>
   import('@/components/file-preview/ArtifactPanel').then((m) => ({ default: m.ArtifactPanel })),
@@ -477,7 +516,7 @@ export function Chat() {
     >
       {currentAgentId === PRESET_PO_AGENT_ID && (
         <aside className="hidden w-1/2 shrink-0 border-r border-black/5 dark:border-white/10 lg:flex lg:flex-col">
-          <SupplierPortraitDashboard />
+          <PoDashboardPanel />
         </aside>
       )}
       <div className="flex min-w-0 flex-1 flex-col">

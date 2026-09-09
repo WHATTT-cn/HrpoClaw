@@ -325,6 +325,14 @@ const TRUSTED_OFFICIAL_EXTENSION_PLUGINS: Record<string, TrustedOfficialExtensio
     npmName: 'experience-capture-plugin',
     recordSource: 'path',
   },
+  // po-decisions is a ClawX-local workforce-decision logging + writable board
+  // plugin shipped as source under resources/openclaw-plugins/po-decisions/ (not
+  // published to npm). Keep it path-owned so startup migration never tries to
+  // fetch/replace it from a registry.
+  'po-decisions': {
+    npmName: 'po-decisions-plugin',
+    recordSource: 'path',
+  },
 };
 
 type TrustedOfficialPluginInstallRecord = Record<string, unknown> & {
@@ -971,6 +979,14 @@ export function ensureExperienceCapturePluginInstalled(): Promise<PluginInstallR
     'experience-capture',
     buildCandidateSources('experience-capture'),
     'Experience Capture',
+  );
+}
+
+export function ensurePoDecisionsPluginInstalled(): Promise<PluginInstallResult> {
+  return ensurePluginInstalled(
+    'po-decisions',
+    buildCandidateSources('po-decisions'),
+    'PO Decisions',
   );
 }
 

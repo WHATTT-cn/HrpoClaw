@@ -741,6 +741,94 @@ async function ensurePresetPoExperienceFile(): Promise<void> {
   logger.info('Provisioned preset PO experience file', { path: target });
 }
 
+/** PO 用工决策登记 skill 的 slug（写入 workspace 的 skills/<slug>/SKILL.md）。 */
+const PRESET_PO_DECISION_SKILL_SLUG = 'po-decision-logging';
+const PRESET_PO_DECISION_SKILL_CONTENT = `---
+name: po-decision-logging
+description: 当用户确认了一条用工分单决策(某物流仓交给某供应商承接多少人)后,把该决策登记进可写决策看板。识别到"定了/就这么定/按这个执行/确认分单"等定案信号时使用。
+---
+
+# 用工决策登记
+
+你负责把**已经确认定案**的用工分单决策登记进决策看板。
+
+## 何时触发
+
+当用户明确表示某条用工分单决策已定案时触发,典型信号:
+- "就这么定" / "按这个执行" / "确认分单" / "定了"
+- 用户复述了完整的分单结论(哪个仓、哪个供应商、承接多少人)
+
+**不要**在只是讨论、比较、还未拍板时登记。
+
+## 登记前先查重
+
+登记前先调用 \`read_decision\` 读取已有决策,避免对同一仓/供应商/日期重复登记。
+
+## 如何登记
+
+调用 \`record_decision\` 工具,按如下字段传参:
+
+- \`warehouse\`: 物流仓名称(如 "A物流仓")
+- \`supplier\`: 供应商名称(如 "A供应商")
+- \`headcount\`: 承接人数 / 档级(如 "60人 / 中批量档")
+- \`basis\`: 决策依据(一句话说明为什么这样分)
+- \`date\`: 决策日期(可选,YYYY-MM-DD;当天可不传,由系统补当天)
+
+**决策单号(decisionNo)由系统自动生成,禁止自行编造或传入。**
+
+调用后会弹出人工审批确认框,由用户最终确认是否写入看板。你只负责如实发起登记,不要替用户预设审批结果。
+`;
+
+/**
+ * 幂等写入 PO workspace 的用工决策登记 skill(SKILL.md)。
+ * 目标 `~/.openclaw/workspace-po/skills/po-decision-logging/SKILL.md`;已存在则跳过。
+ */
+async function ensurePresetPoDecisionSkillFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
+  const skillDir = join(workspace, 'skills', PRESET_PO_DECISION_SKILL_SLUG);
+  const target = join(skillDir, 'SKILL.md');
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(skillDir);
+  await writeFile(target, PRESET_PO_DECISION_SKILL_CONTENT, 'utf8');
+  logger.info('Provisioned preset PO decision skill', { path: target });
+}
+
+/** 用工决策看板数据文件名(与 po-decisions 插件落库路径一致)。 */
+const PRESET_PO_DECISION_FILE = '用工决策.json';
+const PRESET_PO_DECISION_SEED_CONTENT = `${JSON.stringify(
+  {
+    records: [
+      {
+        decisionNo: 'PO-2026-001',
+        date: '2026-01-15',
+warehouse: 'A物流仓',
+        supplier: 'A供应商',
+  headcount: '12人 / 中批量档',
+        basis: 'A供应商本地班组成熟,新仓爬坡期优先承接,首轮豁免新供应商 10 人限额',
+      },
+    ],
+  },
+  null,
+  2,
+)}\n`;
+
+/**
+ * 幂等写入 PO workspace 的用工决策看板种子数据(用工决策.json)。
+ * 目标 `~/.openclaw/workspace-po/用工决策.json`;已存在则跳过(避免覆盖插件追加的真实记录)。
+ */
+async function ensurePresetPoDecisionFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
+  const target = join(workspace, PRESET_PO_DECISION_FILE);
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(workspace);
+  await writeFile(target, PRESET_PO_DECISION_SEED_CONTENT, 'utf8');
+  logger.info('Provisioned preset PO decision seed file', { path: target });
+}
+
 /**
  * 幂等预置 PO 子 Agent。
  *
@@ -757,12 +845,16 @@ export async function ensurePresetPoAgent(): Promise<{ created: boolean }> {
   try {
     const existingIds = await listConfiguredAgentIds();
     if (existingIds.includes(PRESET_PO_AGENT_ID)) {
-      // PO 已存在：仍幂等确保 Experience.md 存在（覆盖老环境升级场景）。
+      // PO 已存在：仍幂等确保各预置文件存在（覆盖老环境升级场景）。
       await ensurePresetPoExperienceFile();
+      await ensurePresetPoDecisionSkillFile();
+      await ensurePresetPoDecisionFile();
       return { created: false };
     }
     await createAgent(PRESET_PO_AGENT_NAME, { inheritWorkspace: true });
     await ensurePresetPoExperienceFile();
+    await ensurePresetPoDecisionSkillFile();
+    await ensurePresetPoDecisionFile();
     logger.info('Provisioned preset PO agent', { agentId: PRESET_PO_AGENT_ID });
     return { created: true };
   } catch (error) {
