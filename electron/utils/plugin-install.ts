@@ -341,6 +341,22 @@ const TRUSTED_OFFICIAL_EXTENSION_PLUGINS: Record<string, TrustedOfficialExtensio
     npmName: 'maintenance-records-plugin',
     recordSource: 'path',
   },
+  // task-ledger is a ClawX-local desktop-assistant step-ledger plugin shipped as
+  // source under resources/openclaw-plugins/task-ledger/ (not published to npm).
+  // Keep it path-owned so startup migration never tries to fetch/replace it from
+  // a registry.
+  'task-ledger': {
+    npmName: 'task-ledger-plugin',
+    recordSource: 'path',
+  },
+  // todo-guard is a ClawX-local, pure-guidance guard plugin shipped as source
+  // under resources/openclaw-plugins/todo-guard/ (not published to npm). Keep it
+  // path-owned so startup migration never tries to fetch/replace it from a
+  // registry.
+  'todo-guard': {
+    npmName: 'todo-guard-plugin',
+    recordSource: 'path',
+  },
 };
 
 type TrustedOfficialPluginInstallRecord = Record<string, unknown> & {
@@ -1003,6 +1019,22 @@ export function ensureMaintenanceRecordsPluginInstalled(): Promise<PluginInstall
     'maintenance-records',
     buildCandidateSources('maintenance-records'),
     'Maintenance Records',
+  );
+}
+
+export function ensureTaskLedgerPluginInstalled(): Promise<PluginInstallResult> {
+  return ensurePluginInstalled(
+    'task-ledger',
+    buildCandidateSources('task-ledger'),
+    'Task Ledger',
+  );
+}
+
+export function ensureTodoGuardPluginInstalled(): Promise<PluginInstallResult> {
+  return ensurePluginInstalled(
+    'todo-guard',
+    buildCandidateSources('todo-guard'),
+    'Todo Guard',
   );
 }
 

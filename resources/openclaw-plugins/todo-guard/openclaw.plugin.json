@@ -1,0 +1,13 @@
+{
+  "id": "todo-guard",
+  "name": "Todo Guard",
+  "description": "Inject desktop-assistant operating discipline (boundary / plan-first / per-step ledger / fail-stop) into the assistant agent system context.",
+  "version": "0.1.0",
+  "entry": "index.mjs",
+  "enabledByDefault": true,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

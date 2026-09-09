@@ -1,0 +1,14 @@
+{
+  "name": "todo-guard-plugin",
+  "version": "0.1.0",
+  "description": "Todo guard plugin for the desktop-assistant agent: inject operating discipline guidance.",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  }
+}

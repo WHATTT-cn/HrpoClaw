@@ -1,0 +1,24 @@
+{
+  "id": "task-ledger",
+  "name": "Task Ledger",
+  "description": "Record desktop-assistant task steps with risk-based approval: normal steps logged directly, high-risk steps require human approval before writing to workspace-assistant/执行记录.json.",
+  "version": "0.1.0",
+  "entry": "index.mjs",
+  "enabledByDefault": true,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "approvalTimeoutMinutes": {
+        "type": "number",
+        "default": 5,
+        "minimum": 1
+      },
+      "timeoutBehavior": {
+        "type": "string",
+        "enum": ["allow", "deny"],
+        "default": "deny"
+      }
+    }
+  }
+}

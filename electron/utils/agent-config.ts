@@ -1163,7 +1163,145 @@ export async function ensurePresetFdeAgent(): Promise<{ created: boolean }> {
     return { created: true };
   } catch (error) {
     // 预置失败不应阻断应用启动：记录后静默返回，用户仍可手动创建 Agent。
-    logger.error('Failed to ensure preset FDE agent', error);
+       logger.error('Failed to ensure preset FDE agent', error);
+    return { created: false };
+  }
+}
+
+// ── Preset Assistant (桌面助手「一句话代办」) ────────────────────────────────
+
+export const PRESET_ASSISTANT_AGENT_NAME = 'Assistant';
+export const PRESET_ASSISTANT_AGENT_ID = 'assistant';
+
+/** Assistant workspace 预置的执行记录台账 JSON 文件名。 */
+const PRESET_ASSISTANT_LEDGER_FILE = '执行记录.json';
+
+/**
+ * 初始执行记录种子数据。
+ *
+ * 与 task-ledger 插件的 TaskLedgerDoc 根结构对齐——**直接数组** `[...]`（非
+ * `{ records: [...] }`）。首启为空数组，实际记录由 task-ledger 插件在
+ * before_tool_call 阶段按 taskId+stepNo 幂等追加。
+ */
+const PRESET_ASSISTANT_LEDGER_CONTENT = JSON.stringify([], null, 2);
+
+/**
+ * 幂等写入 Assistant workspace 的初始执行记录台账。
+ *
+ * - 目标路径固定为 `~/.openclaw/workspace-assistant/执行记录.json`
+ *   （由 createAgent 保证 workspace 已存在）。
+ * - 文件已存在则跳过，避免覆盖插件后续追加的执行记录。
+ */
+async function ensurePresetAssistantLedgerFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_ASSISTANT_AGENT_ID}`);
+  const target = join(workspace, PRESET_ASSISTANT_LEDGER_FILE);
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(workspace);
+  await writeFile(target, PRESET_ASSISTANT_LEDGER_CONTENT, 'utf8');
+  logger.info('Provisioned preset Assistant ledger file', { path: target });
+}
+
+/**
+ * Assistant workspace 预置的「一句话代办」标准作业流程 skill。
+ *
+ * 与 todo-guard 指引互补：todo-guard 在 before_prompt_build 注入四铁律运行纪律，
+ * 本 skill 把「先计划后执行、每步落执行记录、异常即停」落成可检索的 workspace 技能，
+ * 并教模型如何调用 task-ledger 的 record_task_step / read_task_ledger 工具。
+ */
+const PRESET_ASSISTANT_SOP_SKILL_SLUG = 'one-shot-todo-sop';
+const PRESET_ASSISTANT_SOP_SKILL_CONTENT = `---
+name: 桌面助手一句话代办标准作业流程
+description: 当用户以一句话下达一个跨软件的代办任务时，先判定边界、输出结构化计划并等待用户确认，再逐步执行；每执行一步调用 record_task_step 登记执行记录（高风险步骤标 riskLevel:"high" 触发人审），执行前可用 read_task_ledger 查重，任一步失败或验收不过立即停止并报告现场。
+---
+
+# 桌面助手「一句话代办」标准作业流程
+
+你是桌面助手，用户以一句话下达任务，你独立完成跨软件的完整流程。用户是审批员而非操作员。本 skill 定义你必须遵守的标准作业流程；执行记录落库与高风险人审由 task-ledger 插件在 before_tool_call 阶段强制。
+
+## 一、边界判定（动手前）
+
+- 承接：文件整理归档、信息汇总、按明确规则的批处理等边界内任务。
+- 不承接：涉及资金转账、密码/密钥操作、不可逆系统级变更等超边界任务，必须明确拒接并说明原因。
+- 指令信息不完备（目标、对象、完成判定不清）时，先追问一轮；补全失败再拒接。
+
+## 二、先计划后执行
+
+1. 动手前必须先输出结构化计划：有序步骤清单 + 每步验收条件 + 每步风险标记。
+2. 计划输出后等待用户确认（批准 / 调整 / 取消）。
+3. **未获用户计划确认前，禁止任何写操作（移动/删除/发送/修改文件等）。**
+
+## 三、每步落执行记录
+
+- 开工前可调用 \`read_task_ledger\` 读取执行记录台账查重，避免重复执行。
+- 每执行一步，必须调用 \`record_task_step\` 登记该步执行记录，字段：
+  - taskId：本次任务唯一标识（如 "task-20260909-001"），同一任务全程复用。
+  - stepNo：步骤序号，从 1 递增。
+  - action：本步抽象操作描述。
+  - targetApp：本步操作的目标软件。
+  - verify：本步验收条件（机器可校验）。
+  - status：success / blocked（人审驳回）/ failed（执行失败）/ rolled-back（回滚）。
+  - riskLevel：normal / high。计划中判定为不可逆/高风险的步骤必须标 "high"，执行前会弹出人审由用户放行。
+  - instruction / timestamp / detail：可选补充。
+
+## 四、异常即停
+
+- 任一步执行失败或验收条件不通过，立即停止后续步骤。
+- 向用户报告现场：已完成几步、卡在哪一步、产生了哪些中间产物。
+- 等待用户决策（重试 / 跳过 / 终止回滚），不得自行重试超过一次。
+`;
+
+/**
+ * 幂等写入 Assistant workspace 的「一句话代办」SOP skill。
+ *
+ * - 目标路径固定为 `~/.openclaw/workspace-assistant/skills/one-shot-todo-sop/SKILL.md`
+ *   （由 createAgent 保证 workspace 已存在），被 OpenClaw 扫描为 workspace 级技能。
+ * - SKILL.md 已存在则跳过，避免覆盖用户改动。
+ */
+async function ensurePresetAssistantSopSkillFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_ASSISTANT_AGENT_ID}`);
+  const skillDir = join(workspace, 'skills', PRESET_ASSISTANT_SOP_SKILL_SLUG);
+  const target = join(skillDir, 'SKILL.md');
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(skillDir);
+  await writeFile(target, PRESET_ASSISTANT_SOP_SKILL_CONTENT, 'utf8');
+  logger.info('Provisioned preset Assistant SOP skill file', { path: target });
+}
+
+/**
+ * 幂等预置 Assistant(桌面助手「一句话代办」)子 Agent。
+ *
+ * 语义：
+ * - 若配置中已存在 id 为 `assistant` 的 Agent，直接跳过创建，仍幂等确保执行记录台账
+ *   与 SOP skill 存在（覆盖老环境升级）。
+ * - 否则调用 createAgent('Assistant', { inheritWorkspace: true })，随后写入初始执行记录
+ *   台账（空数组）与「一句话代办」SOP skill。
+ *
+ * 设计意图：供应用启动 bootstrap 调用，确保 Assistant 作为常驻可切换的桌面助手 Agent
+ * 始终存在，且其 workspace 预置了 task-ledger 看板所读取的执行记录台账，以及定义标准
+ * 作业流程的 one-shot-todo-sop skill。todo-guard 的四铁律指引在 before_prompt_build 注入。
+ */
+export async function ensurePresetAssistantAgent(): Promise<{ created: boolean }> {
+  try {
+    const existingIds = await listConfiguredAgentIds();
+    if (existingIds.includes(PRESET_ASSISTANT_AGENT_ID)) {
+      await ensurePresetAssistantLedgerFile();
+      await ensurePresetAssistantSopSkillFile();
+      return { created: false };
+    }
+    await createAgent(PRESET_ASSISTANT_AGENT_NAME, { inheritWorkspace: true });
+    await ensurePresetAssistantLedgerFile();
+    await ensurePresetAssistantSopSkillFile();
+    logger.info('Provisioned preset Assistant agent', {
+      agentId: PRESET_ASSISTANT_AGENT_ID,
+    });
+    return { created: true };
+  } catch (error) {
+    // 预置失败不应阻断应用启动：记录后静默返回，用户仍可手动创建 Agent。
+    logger.error('Failed to ensure preset Assistant agent', error);
     return { created: false };
   }
 }

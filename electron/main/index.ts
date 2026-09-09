@@ -54,8 +54,14 @@ import {
   ensureExperienceCapturePluginInstalled,
   ensureEquipmentGuardPluginInstalled,
   ensureMaintenanceRecordsPluginInstalled,
+  ensureTaskLedgerPluginInstalled,
+  ensureTodoGuardPluginInstalled,
 } from '../utils/plugin-install';
-import { ensurePresetPoAgent, ensurePresetFdeAgent } from '../utils/agent-config';
+import {
+  ensurePresetPoAgent,
+  ensurePresetFdeAgent,
+  ensurePresetAssistantAgent,
+} from '../utils/agent-config';
 
 import { deviceOAuthManager } from '../utils/device-oauth';
 import { browserOAuthManager } from '../utils/browser-oauth';
@@ -511,6 +517,33 @@ async function initialize(): Promise<void> {
   if (!isE2EMode) {
     void ensurePresetFdeAgent().catch((error) => {
       logger.warn('Failed to provision preset FDE agent:', error);
+    });
+  }
+
+  // task-ledger is a ClawX-local hook plugin (execution-record logging with
+  // human approval for high-risk steps). Mirror it into ~/.openclaw/extensions/
+  // before the Gateway loads. Deploy it every startup, fire-and-forget.
+  if (!isE2EMode) {
+    void ensureTaskLedgerPluginInstalled().catch((error) => {
+      logger.warn('Failed to install/upgrade Task Ledger plugin:', error);
+    });
+  }
+
+  // todo-guard is a ClawX-local guidance-only plugin (one-shot todo discipline
+  // injected via before_prompt_build). Mirror it into ~/.openclaw/extensions/
+  // before the Gateway loads. Deploy it every startup, fire-and-forget.
+  if (!isE2EMode) {
+    void ensureTodoGuardPluginInstalled().catch((error) => {
+      logger.warn('Failed to install/upgrade Todo Guard plugin:', error);
+    });
+  }
+
+  // Provision the preset "Assistant" agent on first launch (idempotent). Its
+  // workspace is pre-seeded with the execution-ledger JSON and the one-shot todo
+  // SOP skill so task-ledger/todo-guard can enforce the discipline immediately.
+  if (!isE2EMode) {
+    void ensurePresetAssistantAgent().catch((error) => {
+      logger.warn('Failed to provision preset Assistant agent:', error);
     });
   }
 

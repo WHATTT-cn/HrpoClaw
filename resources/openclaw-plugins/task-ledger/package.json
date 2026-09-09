@@ -1,0 +1,14 @@
+{
+  "name": "task-ledger-plugin",
+  "version": "0.1.0",
+  "description": "Task ledger plugin for the desktop-assistant agent: risk-based step recording with human approval.",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "openclaw": {
+    "extensions": ["./index.mjs"]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  }
+}
