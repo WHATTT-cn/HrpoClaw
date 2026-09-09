@@ -35,8 +35,10 @@ import { ChatToolbar } from './ChatToolbar';
 import { AcpTimeline } from './AcpTimeline';
 import { AcpErrorBanner } from './AcpErrorBanner';
 import { SupplierPortraitDashboard } from './SupplierPortraitDashboard';
+import { MaintenanceRecordDashboard } from './MaintenanceRecordDashboard';
 
 const PRESET_PO_AGENT_ID = 'po';
+const PRESET_FDE_AGENT_ID = 'fde';
 
 const ArtifactPanelLazy = lazy(() =>
   import('@/components/file-preview/ArtifactPanel').then((m) => ({ default: m.ArtifactPanel })),
@@ -478,6 +480,11 @@ export function Chat() {
       {currentAgentId === PRESET_PO_AGENT_ID && (
         <aside className="hidden w-1/2 shrink-0 border-r border-black/5 dark:border-white/10 lg:flex lg:flex-col">
           <SupplierPortraitDashboard />
+        </aside>
+      )}
+      {currentAgentId === PRESET_FDE_AGENT_ID && (
+        <aside className="hidden w-1/2 shrink-0 border-r border-black/5 dark:border-white/10 lg:flex lg:flex-col">
+          <MaintenanceRecordDashboard />
         </aside>
       )}
       <div className="flex min-w-0 flex-1 flex-col">

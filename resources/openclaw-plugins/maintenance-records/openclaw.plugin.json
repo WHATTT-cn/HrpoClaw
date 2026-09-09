@@ -1,0 +1,26 @@
+{
+  "id": "maintenance-records",
+  "name": "Maintenance Records",
+  "description": "历史维修记录登记 + 人审:模型识别完整维修闭环(已确认原因/已执行维修/复机验证)后调用 record_maintenance 工具,插件在 before_tool_call 拦截并发起人审弹窗,用户确认后写入 ~/.openclaw/workspace-fde/维修记录.json;read_maintenance 读取已有记录供模型查重。",
+  "version": "0.1.0",
+  "entry": "index.mjs",
+  "enabledByDefault": true,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "approvalTimeoutMinutes": {
+        "type": "number",
+        "description": "人审弹窗等待超时(分钟)。默认 5。",
+        "default": 5,
+        "minimum": 1
+      },
+      "timeoutBehavior": {
+        "type": "string",
+        "description": "审批超时行为:deny=不写入(默认) / allow=按允许处理。",
+        "enum": ["allow", "deny"],
+        "default": "deny"
+      }
+    }
+  }
+}

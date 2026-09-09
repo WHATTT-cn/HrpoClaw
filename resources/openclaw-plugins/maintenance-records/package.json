@@ -1,0 +1,16 @@
+{
+  "name": "maintenance-records-plugin",
+  "version": "0.1.0",
+  "description": "ClawX maintenance-records: register historical maintenance records with human approval in OpenClaw",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  }
+}

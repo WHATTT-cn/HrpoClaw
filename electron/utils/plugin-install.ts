@@ -333,6 +333,14 @@ const TRUSTED_OFFICIAL_EXTENSION_PLUGINS: Record<string, TrustedOfficialExtensio
     npmName: 'equipment-guard-plugin',
     recordSource: 'path',
   },
+  // maintenance-records is a ClawX-local maintenance-record log plugin shipped as
+  // source under resources/openclaw-plugins/maintenance-records/ (not published to
+  // npm). Keep it path-owned so startup migration never tries to fetch/replace it
+  // from a registry.
+  'maintenance-records': {
+    npmName: 'maintenance-records-plugin',
+    recordSource: 'path',
+  },
 };
 
 type TrustedOfficialPluginInstallRecord = Record<string, unknown> & {
@@ -987,6 +995,14 @@ export function ensureEquipmentGuardPluginInstalled(): Promise<PluginInstallResu
     'equipment-guard',
     buildCandidateSources('equipment-guard'),
     'Equipment Guard',
+  );
+}
+
+export function ensureMaintenanceRecordsPluginInstalled(): Promise<PluginInstallResult> {
+  return ensurePluginInstalled(
+    'maintenance-records',
+    buildCandidateSources('maintenance-records'),
+    'Maintenance Records',
   );
 }
 

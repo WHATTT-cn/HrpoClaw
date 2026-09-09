@@ -53,6 +53,7 @@ import {
   ensureWeightsGuardPluginInstalled,
   ensureExperienceCapturePluginInstalled,
   ensureEquipmentGuardPluginInstalled,
+  ensureMaintenanceRecordsPluginInstalled,
 } from '../utils/plugin-install';
 import { ensurePresetPoAgent, ensurePresetFdeAgent } from '../utils/agent-config';
 
@@ -483,6 +484,16 @@ async function initialize(): Promise<void> {
   if (!isE2EMode) {
     void ensureEquipmentGuardPluginInstalled().catch((error) => {
       logger.warn('Failed to install/upgrade Equipment Guard plugin:', error);
+    });
+  }
+
+  // maintenance-records is a ClawX-local hook plugin (historical maintenance
+  // record logging with human approval). Like the others it must be mirrored
+  // into ~/.openclaw/extensions/ before the Gateway loads, independent of any
+  // channel configuration. Deploy it every startup, fire-and-forget.
+  if (!isE2EMode) {
+    void ensureMaintenanceRecordsPluginInstalled().catch((error) => {
+      logger.warn('Failed to install/upgrade Maintenance Records plugin:', error);
     });
   }
 

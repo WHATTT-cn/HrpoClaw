@@ -988,6 +988,150 @@ async function ensurePresetFdeSkillFile(): Promise<void> {
 }
 
 /**
+ * FDE Agent workspace 预置的「历史维修记录登记」skill。
+ *
+ * 定义 FDE 在一次诊断闭环（已确认原因 / 已执行维修 / 复机验证 三要素齐备）完成后，
+ * 当用户明确要求登记时，如何调用 maintenance-records 插件的 record_maintenance 工具
+ * 触发人审弹窗、经用户确认后写入 `~/.openclaw/workspace-fde/维修记录.json`。
+ *
+ * 与 apx240-fault-diagnosis（诊断 SOP）互补：诊断产出闭环，本 skill 负责闭环入库。
+ */
+const PRESET_FDE_MAINTENANCE_SKILL_SLUG = 'maintenance-record-logging';
+const PRESET_FDE_MAINTENANCE_SKILL_CONTENT = `---
+name: APX-240 历史维修记录登记
+description: 当一次维修闭环（已确认原因、已执行维修、复机验证 三要素齐备）完成且用户明确要求登记为历史维修记录时，先用 read_maintenance 查重，再调用 record_maintenance 工具触发人审弹窗，经用户确认后写入维修记录看板。
+version: 1.0.0
+metadata:
+  openclaw:
+    skillKey: maintenance-record-logging
+    emoji: 📝
+---
+
+# APX-240 历史维修记录登记流程
+
+当一次设备维修的完整闭环已经确认，且现场工程师**明确要求**把它登记为新的历史维修记录时，你必须严格执行本流程，把记录写入维修记录看板。本 skill 与《APX-240 现场故障诊断》互补：诊断流程负责产出闭环，本 skill 负责把闭环入库。
+
+## 触发条件（三者必须同时满足）
+
+1. **三要素齐备**：本次交互中已经明确确认了以下三项，缺一不可：
+   - **已确认原因（confirmedCause）**：不是"可能原因"，而是已经定位、确认的根因。
+   - **已执行维修（repairAction）**：实际已完成的维修动作（含授权人员执行的拆装、更换等）。
+   - **复机验证（verification）**：维修后复机的验证结果（如连续运行 N 袋无报警、温度稳定 N 分钟）。
+2. **用户明确要求登记**：用户用自然语言表达了"登记 / 记一条维修记录 / 存入维修记录 / 加到看板"等意图。用户没有明确要求时，不得擅自登记。
+3. **未重复登记**：调用登记前，先用 \`read_maintenance\` 工具读取现有全部记录，确认本次三要素与历史记录不重复。若已存在等价记录，告知用户已有该记录、无需重复登记。
+
+## 作业步骤
+
+1. **查重**：调用 \`read_maintenance\` 工具，读取现有全部历史维修记录，比对三要素是否已存在。
+2. **组织字段**：从对话中提炼出准确的 confirmedCause / repairAction / verification 文本；如用户提供了维修日期则填 date（格式 YYYY-MM-DD），未提供则省略 date（插件默认取当天）。**不要**自行编造工单号——工单号由插件自动递增分配（WO-240-xxx）。
+3. **调用登记工具**：调用 \`record_maintenance\` 工具，传入 confirmedCause / repairAction / verification（及可选 date）。
+4. **等待人审**：调用后系统会弹出人审确认框，由用户决定是否入库。你**不能**代替用户点确认，也不能声称"已写入"——只有用户在弹窗中确认后记录才真正写入。
+5. **回执**：登记工具调用完成后，告知用户"已发起维修记录登记，请在弹窗中确认后写入看板"。多条记录需分别多次调用。
+
+## 铁律（不可违背）
+
+1. **三要素未确认不得登记**：只要"已确认原因/已执行维修/复机验证"任一项仍是推测或缺失，禁止调用 \`record_maintenance\`；应先补齐或向工程师追问。
+2. **不得绕过人审**：登记必须经 \`record_maintenance\` 工具走人审弹窗，禁止用其他方式直接写文件；也不得在用户确认前宣称已入库。
+3. **不编造工单号与内容**：工单号由插件分配；三要素文本必须来自本次交互中已确认的事实，不得杜撰。
+4. **与诊断分离**：诊断阶段（《APX-240 现场故障诊断》）只输出"可能原因"，不触发登记；只有维修闭环确认且用户要求时才走本流程。
+
+## 边界
+
+- 仅在维修闭环确认且用户要求登记时启用；日常诊断/问答不套用本流程。
+- 登记的是"当时已确认的状态"，不替代未来的当前诊断。
+`;
+
+/** FDE workspace 预置的历史维修记录 JSON 文件名。 */
+const PRESET_FDE_MAINTENANCE_FILE = '维修记录.json';
+
+/**
+ * 初始历史维修记录种子数据（源自《自动封装说明书.md》第 5 节维修记录表）。
+ *
+ * 与 maintenance-records 插件的 MaintenanceRecordsDoc 根结构 `{ records: [...] }` 对齐，
+ * 字段名 workOrder/date/confirmedCause/repairAction/verification 完全一致，供前端看板与
+ * nextWorkOrder 工单号递增读取。先写入 5 条（WO-240-031/042/051/063/077），后续登记在插件侧追加。
+ */
+const PRESET_FDE_MAINTENANCE_CONTENT = JSON.stringify(
+  {
+    records: [
+      {
+        workOrder: 'WO-240-031',
+        date: '2026-03-08',
+        confirmedCause: 'P1 支架松动并有粉尘遮挡',
+        repairAction: '清洁 P1、校准位置、紧固支架',
+        verification: '连续运行 500 袋无报警',
+      },
+      {
+        workOrder: 'WO-240-042',
+        date: '2026-04-16',
+        confirmedCause: 'H1 加热回路开路',
+        repairAction: '锁定挂牌后由电气维修更换 H1 加热组件',
+        verification: '165°C 稳定 30 分钟后试产合格',
+      },
+      {
+        workOrder: 'WO-240-051',
+        date: '2026-05-03',
+        confirmedCause: '气源过滤器滤芯堵塞',
+        repairAction: '停机泄压后更换滤芯、检查调压器',
+        verification: '设备端压力稳定在 0.62 MPa',
+      },
+      {
+        workOrder: 'WO-240-063',
+        date: '2026-05-27',
+        confirmedCause: 'G1 联锁位置偏移',
+        repairAction: '停机校准联锁位置并锁紧固定件',
+        verification: '连续开关门 20 次，报警未复现',
+     },
+      {
+        workOrder: 'WO-240-077',
+        date: '2026-06-19',
+        confirmedCause: '主传动轴承磨损',
+        repairAction: '锁定挂牌后由机械专家更换轴承、检查传动对中',
+        verification: '空载 15 分钟及试产 300 袋正常',
+      },
+    ],
+  },
+  null,
+  2,
+);
+
+/**
+ * 幂等写入 FDE workspace 的初始历史维修记录。
+ *
+ * - 目标路径固定为 `~/.openclaw/workspace-fde/维修记录.json`（由 createAgent 保证 workspace 已存在）。
+ * - 文件已存在则跳过，避免覆盖插件后续登记追加的记录。
+ */
+async function ensurePresetFdeMaintenanceFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_FDE_AGENT_ID}`);
+  const target = join(workspace, PRESET_FDE_MAINTENANCE_FILE);
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(workspace);
+  await writeFile(target, PRESET_FDE_MAINTENANCE_CONTENT, 'utf8');
+  logger.info('Provisioned preset FDE maintenance file', { path: target });
+}
+
+/**
+ * 幂等写入 FDE workspace 的「历史维修记录登记」skill。
+ *
+ * - 目标路径固定为 `~/.openclaw/workspace-fde/skills/maintenance-record-logging/SKILL.md`
+ *   （由 createAgent 保证 workspace 已存在），被 OpenClaw 扫描为 workspace 级技能。
+ * - SKILL.md 已存在则跳过，避免覆盖用户改动。
+ */
+async function ensurePresetFdeMaintenanceSkillFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_FDE_AGENT_ID}`);
+  const skillDir = join(workspace, 'skills', PRESET_FDE_MAINTENANCE_SKILL_SLUG);
+  const target = join(skillDir, 'SKILL.md');
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(skillDir);
+  await writeFile(target, PRESET_FDE_MAINTENANCE_SKILL_CONTENT, 'utf8');
+  logger.info('Provisioned preset FDE maintenance skill file', { path: target });
+}
+
+/**
  * 幂等预置 FDE(现场故障诊断)子 Agent。
  *
  * 语义：
@@ -1006,11 +1150,15 @@ export async function ensurePresetFdeAgent(): Promise<{ created: boolean }> {
     if (existingIds.includes(PRESET_FDE_AGENT_ID)) {
       await ensurePresetFdeManualFile();
       await ensurePresetFdeSkillFile();
+      await ensurePresetFdeMaintenanceFile();
+      await ensurePresetFdeMaintenanceSkillFile();
       return { created: false };
     }
     await createAgent(PRESET_FDE_AGENT_NAME, { inheritWorkspace: true });
     await ensurePresetFdeManualFile();
     await ensurePresetFdeSkillFile();
+    await ensurePresetFdeMaintenanceFile();
+    await ensurePresetFdeMaintenanceSkillFile();
     logger.info('Provisioned preset FDE agent', { agentId: PRESET_FDE_AGENT_ID });
     return { created: true };
   } catch (error) {
