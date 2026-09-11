@@ -103,6 +103,7 @@ export function SupplierPortraitDashboard() {
   const [当前仓名, set当前仓名] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 刷新按钮除重读画像 JSON 外，还请求重跑看板分析（重跑权收敛到此按钮）。
   const requestPoDashboardRefresh = usePoDashboardAnalysisStore((s) => s.requestRefresh);
 
   const load = useCallback(async () => {
@@ -161,8 +162,8 @@ export function SupplierPortraitDashboard() {
           <button
             type="button"
             onClick={() => {
-              void load();
               requestPoDashboardRefresh();
+              void load();
             }}
             disabled={loading}
             className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-black/5 disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/10"

@@ -61,7 +61,7 @@ function PoDashboardPanel() {
   const [tab, setTab] = useState<PoDashboardTab>('portrait');
   const tabs: { key: PoDashboardTab; label: string }[] = [
     { key: 'portrait', label: '供应商画像' },
-    { key: 'decision', label: '用工决策' },
+    { key: 'decision', label: '履约追踪' },
   ];
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -225,15 +225,9 @@ function PoDashboardAnalysisState({
         <p className="max-w-md text-xs text-muted-foreground">
           {errorMessage || '大模型请求超时或失败，未返回分析结果。'}
         </p>
-        <button
-          type="button"
-          onClick={onRetry}
-          data-testid="po-dashboard-analysis-retry"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          <span>重新分析</span>
-        </button>
+        <p className="max-w-md text-xs text-muted-foreground">
+          可点击左侧画像看板的「刷新」按钮重跑分析。
+        </p>
       </div>
     );
   }
@@ -491,13 +485,23 @@ export function Chat() {
     };
   }, [currentSessionKey, loadSessions, sessionDiscoveryAttempted, sessions.length]);
 
+  // PO 看板分析历史会话 key（持久化，null=无历史）。提前到所有引用它的 effect 之前声明，
+  // 以便下方 effect 的依赖数组能安全引用它，避免暂时性死区（TDZ）。
+  const poDashboardSessionKey = usePoDashboardAnalysisStore((s) => s.sessionKey);
+
   useEffect(() => {
     if (!currentSessionKey || !cwd || !currentSession?.createdLocally) return;
+    // 第三道拦截豁免：已持久化的 dashboard 历史会话不能在此调 prepareLocalSession，
+    // 否则会抢占 acpActiveSessionKey 并清空 timeline，使下方加载 effect 的 activeSessionKey
+    // 守卫命中而跳过 loadSession，导致「有历史却显示空态」。放行给加载 effect 走 loadSession 回放。
+    const isPersistedDashboardHistory =
+      isPoDashboardSessionKey(currentSessionKey) && currentSessionKey === poDashboardSessionKey;
+    if (isPersistedDashboardHistory) return;
     acpLoadInFlightKeyRef.current = null;
     const hasStaleTimeline = acpTimeline.sessionId !== currentSessionKey || acpTimeline.itemOrder.length > 0;
     if (acpActiveSessionKey === currentSessionKey && acpWorkspaceRoot === cwd && acpCwd === cwd && !hasStaleTimeline) return;
     prepareLocalAcpSession({ sessionKey: currentSessionKey, workspaceRoot: cwd, cwd });
-  }, [acpActiveSessionKey, acpCwd, acpTimeline.itemOrder.length, acpTimeline.sessionId, acpWorkspaceRoot, currentSession, currentSessionKey, cwd, prepareLocalAcpSession]);
+  }, [acpActiveSessionKey, acpCwd, acpTimeline.itemOrder.length, acpTimeline.sessionId, acpWorkspaceRoot, currentSession, currentSessionKey, cwd, poDashboardSessionKey, prepareLocalAcpSession]);
 
   useEffect(() => {
     if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;
@@ -506,8 +510,16 @@ export function Chat() {
     const acpLoadKey = `${currentSessionKey}\0${cwd}`;
     if (acpLoadInFlightKeyRef.current === acpLoadKey) return;
     const currentSession = sessions.find((session) => session.key === currentSessionKey);
-    if (currentSession?.createdLocally) return;
-    const createIfMissing = !currentSession;
+    // PO 看板分析历史会话经 selectAcpSession 会被标记 createdLocally 塞进 sessions
+    //（隐形会话不进后端侧栏列表，ensureSessionEntry 对新 key 恒打 createdLocally），
+    // 但它本质是后端已持久化的会话，必须放行去 loadSession 回放历史 transcript；
+    // 否则会因下方 createdLocally 提前 return，导致「有历史却显示尚无分析结果」。
+    const isPersistedDashboardHistory =
+      isPoDashboardSessionKey(currentSessionKey) && currentSessionKey === poDashboardSessionKey;
+    if (currentSession?.createdLocally && !isPersistedDashboardHistory) return;
+    // 命中已持久化的 dashboard key 时 createIfMissing=false 走 loadSession 回放历史 transcript，
+    // 否则默认 !currentSession 恒为 true 会走 newSession 新建空会话，历史永远显示不出来。
+    const createIfMissing = !currentSession && !isPersistedDashboardHistory;
     acpLoadInFlightKeyRef.current = acpLoadKey;
     if (createIfMissing) selectAcpSession(currentSessionKey, cwd);
     void loadAcpSession({
@@ -524,7 +536,7 @@ export function Chat() {
         acpLoadInFlightKeyRef.current = null;
       }
     });
-  }, [acknowledgeAcpSessionCreated, acpActiveSessionKey, acpCwd, acpWorkspaceRoot, currentSessionKey, cwd, loadAcpSession, selectAcpSession, sessionDiscoveryAttempted, sessions, workspaceContextAvailable]);
+  }, [acknowledgeAcpSessionCreated, acpActiveSessionKey, acpCwd, acpWorkspaceRoot, currentSessionKey, cwd, loadAcpSession, poDashboardSessionKey, selectAcpSession, sessionDiscoveryAttempted, sessions, workspaceContextAvailable]);
 
   const platform = window.electron?.platform;
   const isMac = platform === 'darwin';
@@ -640,8 +652,10 @@ export function Chat() {
 
   // ── PO 看板分析 Tab（阶段四）──────────────────────────────────────────
   const isPoAgent = currentAgentId === PRESET_PO_AGENT_ID;
-  const poDashboardSessionKey = usePoDashboardAnalysisStore((s) => s.sessionKey);
   const startPoDashboardSession = usePoDashboardAnalysisStore((s) => s.startNewSession);
+  const discoverLatestPoDashboardSessionKey = usePoDashboardAnalysisStore(
+    (s) => s.discoverLatestDashboardSessionKey,
+  );
   // 右半区 Tab 由当前会话 key 派生：命中 dashboard key 即处于「看板分析」视图。
   // 这样即便用户从侧栏切走其它会话，视图也能与全局会话天然保持一致。
   const poRightTab: PoRightTab = isPoDashboardSessionKey(currentSessionKey) ? 'dashboard' : 'chat';
@@ -656,6 +670,9 @@ export function Chat() {
   // 统一入口：新建看板分析会话（时间戳 key，模拟覆盖旧记录）并隐藏触发一次分析。
   const triggerPoDashboardAnalysis = useCallback(() => {
     const newKey = startPoDashboardSession();
+    // 同步占用 in-flight 锁，避免加载 effect 抢先对这个尚未在后端创建的新 key
+    // 误走 createIfMissing=false 的 loadSession 分支（新 key 会被识别为「已持久化历史」）。
+    acpLoadInFlightKeyRef.current = `${newKey}\0${cwd}`;
     selectAcpSession(newKey, cwd);
     runAcpPrompt({
       sessionKey: newKey,
@@ -670,29 +687,48 @@ export function Chat() {
     if (nextTab === 'chat') {
       selectAcpSession(lastChatSessionKeyRef.current);
       return;
-    }
-    // 切到看板分析：有历史则仅加载复用，无历史则新建会话并隐藏触发一次分析。
+}
+    // 切到看板分析：统一以后端真实会话为准，发现「最新一个 dashboard 会话」并加载其历史；
+    // 后端确实一个都没有（首次使用）才新建会话并隐藏触发一次分析。
+    // 先用前端持久化 key 立即加载兜底（避免等待 RPC 的空窗），再用后端发现结果校正。
     if (poDashboardSessionKey) {
       selectAcpSession(poDashboardSessionKey, cwd);
-      return;
     }
-    triggerPoDashboardAnalysis();
-  }, [cwd, poDashboardSessionKey, poRightTab, selectAcpSession, triggerPoDashboardAnalysis]);
+ void (async () => {
+ const latestKey = await discoverLatestPoDashboardSessionKey();
+      if (latestKey) {
+        // 后端存在会话：加载最新一个的历史（若与兜底 key 相同则为幂等切换）。
+     selectAcpSession(latestKey, cwd);
+        return;
+      }
+      // 后端一个都没有：仅当前端也无兜底 key 时才触发首次分析，避免重复触发。
+      if (!poDashboardSessionKey) {
+        triggerPoDashboardAnalysis();
+      }
+    })();
+  }, [
+  cwd,
+    discoverLatestPoDashboardSessionKey,
+    poDashboardSessionKey,
+    poRightTab,
+    selectAcpSession,
+    triggerPoDashboardAnalysis,
+  ]);
 
   const showPoRightTabs = isPoAgent;
   const isPoDashboardView = showPoRightTabs && poRightTab === 'dashboard';
 
-  // 画像刷新按钮触发的看板分析重跑：refreshSignal 变化时重建会话并隐藏触发一次分析。
-  // 用 ref 记住已处理的 signal，避免初次挂载（0）误触发。
-  const poRefreshSignal = usePoDashboardAnalysisStore((s) => s.refreshSignal);
-  const lastHandledRefreshSignalRef = useRef(poRefreshSignal);
+  // 画像看板点「刷新」→ store.requestRefresh 自增 refreshSignal → 此处监听并重跑看板分析。
+  // 「重跑分析」的权力收敛到画像刷新按钮：看板分析 Tab 不再单独提供「重新分析」按钮。
+  const poDashboardRefreshSignal = usePoDashboardAnalysisStore((s) => s.refreshSignal);
+  const prevPoDashboardRefreshSignalRef = useRef(poDashboardRefreshSignal);
   useEffect(() => {
-    if (poRefreshSignal === lastHandledRefreshSignalRef.current) return;
-    lastHandledRefreshSignalRef.current = poRefreshSignal;
+    if (poDashboardRefreshSignal === prevPoDashboardRefreshSignalRef.current) return;
+    prevPoDashboardRefreshSignalRef.current = poDashboardRefreshSignal;
     if (!isPoAgent) return;
-    // 重建会话覆盖旧记录（ClawX 无清空 transcript API，用新时间戳 key 模拟）。
+    // 新建时间戳会话覆盖旧分析（模拟「刷新即重跑」）。
     triggerPoDashboardAnalysis();
-  }, [poRefreshSignal, isPoAgent, triggerPoDashboardAnalysis]);
+  }, [poDashboardRefreshSignal, isPoAgent, triggerPoDashboardAnalysis]);
 
   // 看板分析视图下 timeline 为空时的状态：分析中 / 失败 / 空闲。
   const poDashboardAnalysisStatus: 'running' | 'error' | 'idle' =

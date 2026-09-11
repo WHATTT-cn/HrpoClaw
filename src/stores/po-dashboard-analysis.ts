@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import { useGatewayStore } from './gateway';
+
 /**
  * PO「看板分析」Tab 的会话控制器（阶段四）。
  *
@@ -13,9 +15,13 @@ import { persist } from 'zustand/middleware';
  *   无法据此判断「有无历史」；故本 store 持久化 sessionKey 作为「是否有历史分析」的唯一依据：
  *   sessionKey === null 视为无历史（切 Tab 首次触发），非 null 视为有历史（切 Tab 仅加载不重跑）。
  *
- * 本 store 只负责两件事：
- * 1) 记录并持久化「当前看板分析会话 key」（时间戳 key），供 Chat 页切 Tab 时加载 / 判断是否触发。
- * 2) 提供 refreshSignal 计数器，让左半区「供应商画像刷新按钮」跨组件通知右半区看板分析 Tab 重跑分析。
+ * 本 store 只负责一件事：
+ * 记录并持久化「当前看板分析会话 key」（时间戳 key），供 Chat 页切 Tab 时加载 / 判断是否触发。
+ * sessionKey === null 视为无历史（需用户显式点击「开始分析」触发）；非 null 视为有历史（切 Tab 仅加载复用不重跑）。
+ *
+ * 另外维护一个非持久化的 refreshSignal：画像看板点「刷新」时自增，
+ * Chat 页监听该信号变化并重跑看板分析（新建时间戳会话覆盖旧分析）。
+ * 「重跑分析」的权力收敛到画像看板的刷新按钮，看板分析 Tab 不再单独提供「重新分析」按钮。
  */
 
 /** 看板分析会话 key 的前缀（不含时间戳）。用于 isPoDashboardSessionKey 识别与排除。 */
@@ -34,17 +40,32 @@ export function createPoDashboardSessionKey(): string {
 type PoDashboardAnalysisState = {
   /** 当前看板分析会话 key；null 表示尚未触发过分析（无历史）。 */
   sessionKey: string | null;
-  /** 递增计数器：每次「刷新按钮/二次触发」自增，供右半区订阅后重跑分析。 */
+  /** 画像看板点「刷新」自增的信号（非持久化）；Chat 页监听其变化以重跑看板分析。 */
   refreshSignal: number;
   /** 新建一个时间戳会话 key 并置为当前（返回新 key）。 */
   startNewSession: () => string;
-  /** 触发一次重跑请求（画像刷新按钮点击时调用）。 */
+  /** 请求重跑看板分析：仅自增 refreshSignal，由 Chat 页监听并触发新一轮分析。 */
   requestRefresh: () => void;
+  /**
+   * 从后端会话目录发现「最新一个看板分析会话」并同步到 sessionKey。
+   * 直接调 gateway 的 sessions.list RPC（返回全部会话，含被侧栏过滤的 dashboard 会话），
+   * 筛出所有 agent:po:dashboard-<ts> 会话，按时间戳降序取最新一个作为当前会话 key。
+   * 返回发现到的最新 key；后端一个都没有则返回 null（视为无历史，应显示「开始分析」）。
+   * 用途：切「看板分析」Tab 时统一以后端真实会话为准，避免前端持久化的单一 key
+   * 与后端实际不同步（清缓存 / 多次分析）导致「有历史却显示空态」。
+   */
+  discoverLatestDashboardSessionKey: () => Promise<string | null>;
 };
+
+/** 从 agent:po:dashboard-<ts> 会话 key 解析末尾时间戳；非法则返回 0。 */
+function parseDashboardSessionTimestamp(sessionKey: string): number {
+  const ts = Number(sessionKey.slice(PO_DASHBOARD_SESSION_PREFIX.length));
+  return Number.isFinite(ts) ? ts : 0;
+}
 
 export const usePoDashboardAnalysisStore = create<PoDashboardAnalysisState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       sessionKey: null,
       refreshSignal: 0,
       startNewSession: () => {
@@ -52,14 +73,42 @@ export const usePoDashboardAnalysisStore = create<PoDashboardAnalysisState>()(
         set({ sessionKey: key });
         return key;
       },
-      requestRefresh: () => {
-        set({ refreshSignal: get().refreshSignal + 1 });
+      requestRefresh: () => set((state) => ({ refreshSignal: state.refreshSignal + 1 })),
+      discoverLatestDashboardSessionKey: async () => {
+        try {
+          const data = await useGatewayStore
+            .getState()
+            .rpc<Record<string, unknown>>('sessions.list', {
+              includeDerivedTitles: false,
+              includeLastMessage: false,
+            });
+          const rawSessions = Array.isArray(data?.sessions) ? data.sessions : [];
+          let latestKey: string | null = null;
+          let latestTs = -1;
+          for (const raw of rawSessions) {
+            const key =
+              raw && typeof raw === 'object' && typeof (raw as { key?: unknown }).key === 'string'
+                ? (raw as { key: string }).key
+                : '';
+            if (!key || !isPoDashboardSessionKey(key)) continue;
+            const ts = parseDashboardSessionTimestamp(key);
+            if (ts > latestTs) {
+              latestTs = ts;
+              latestKey = key;
+            }
+          }
+          set({ sessionKey: latestKey });
+          return latestKey;
+        } catch (error) {
+          console.warn('discoverLatestDashboardSessionKey failed:', error);
+          return null;
+        }
       },
     }),
     {
       name: 'clawx.po-dashboard-analysis',
       version: 1,
-      // refreshSignal 是会话内瞬时信号，不持久化；只持久化 sessionKey 以跨重启判断「有无历史」。
+      // 只持久化 sessionKey 以跨重启判断「有无历史」。
       partialize: (state) => ({ sessionKey: state.sessionKey }),
     },
   ),
