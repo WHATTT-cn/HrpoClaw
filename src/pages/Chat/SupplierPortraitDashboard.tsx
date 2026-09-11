@@ -2,15 +2,16 @@
  * 供应商画像看板
  *
  * 仅在 PO agent 对话窗口左半区渲染（见 Chat/index.tsx）。
- * 数据来源：src/data/supplier-portrait-table.ts（硬编码测试数据）。
+ * 数据来源：`~/.openclaw/workspace-po/供应商画像.json`（由 gen-portrait-md.mjs 从 TS 真源
+ * supplier-portrait-table.ts 派生，并在运行时读取 —— 否则构建期快照会被「定期全量刷新」冻结）。
  *
  * 结构：
- * - 顶部下拉按钮：切换物流仓，按钮表面显示当前物流仓名称。
+ * - 顶部下拉按钮 + 刷新按钮：切换物流仓 / 手动重读 JSON。
  * - 每个物流仓的画像表按「供应商」聚合为条目，条目名即供应商名。
  * - 每个供应商条目内，把该供应商的每一行数据用统一圆角矩形卡片分块展示。
  */
-import { useMemo, useState } from 'react';
-import { ChevronDown, Warehouse } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, RefreshCw, Warehouse } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,7 +19,34 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
-import { 供应商画像表, type 画像行 } from '@/data/supplier-portrait-table';
+import { readTextFile } from '@/lib/file-preview-client';
+import { usePoDashboardAnalysisStore } from '@/stores/po-dashboard-analysis';
+import type { 画像行, 多仓画像表 } from '@/data/supplier-portrait-table';
+
+/** 画像看板数据文件路径（与 agent-config 预置种子路径一致）。 */
+const PORTRAIT_FILE_PATH = '~/.openclaw/workspace-po/供应商画像.json';
+
+/**
+ * 容错解析 JSON 文本为多仓画像表。
+ * 结构不符或异常时回退空表，绝不让解析失败导致看板崩溃。
+ */
+function parsePortrait(text: string): 多仓画像表 {
+  try {
+    const doc = JSON.parse(text) as 多仓画像表;
+    if (!doc || !Array.isArray(doc.仓库)) {
+      return { 画像版本: '', 仓库: [] };
+    }
+    return {
+      画像版本: typeof doc.画像版本 === 'string' ? doc.画像版本 : '',
+      仓库: doc.仓库.filter(
+        (w): w is NonNullable<typeof w> =>
+          !!w && typeof w.物流仓 === 'string' && Array.isArray(w.行),
+      ),
+    };
+  } catch {
+    return { 画像版本: '', 仓库: [] };
+  }
+}
 
 /** 单条指标（label + 值），统一渲染样式。 */
 function Metric({ label, value }: { label: string; value: string | number }) {
@@ -71,9 +99,41 @@ function RowCard({ 行 }: { 行: 画像行 }) {
 }
 
 export function SupplierPortraitDashboard() {
-  const 仓库列表 = 供应商画像表.仓库;
-  const [当前仓名, set当前仓名] = useState(仓库列表[0]?.物流仓 ?? '');
+  const [画像表, set画像表] = useState<多仓画像表>({ 画像版本: '', 仓库: [] });
+  const [当前仓名, set当前仓名] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestPoDashboardRefresh = usePoDashboardAnalysisStore((s) => s.requestRefresh);
 
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await readTextFile(PORTRAIT_FILE_PATH);
+      if (!res.ok) {
+        // 文件不存在等同空看板，不作为错误展示。
+        if (res.error === 'notFound') {
+          set画像表({ 画像版本: '', 仓库: [] });
+        } else {
+          setError(`读取失败：${res.error ?? '未知错误'}`);
+          set画像表({ 画像版本: '', 仓库: [] });
+        }
+        return;
+      }
+      set画像表(parsePortrait(res.content ?? ''));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      set画像表({ 画像版本: '', 仓库: [] });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const 仓库列表 = 画像表.仓库;
   const 当前仓 = useMemo(
     () => 仓库列表.find((w) => w.物流仓 === 当前仓名) ?? 仓库列表[0],
     [仓库列表, 当前仓名],
@@ -92,11 +152,25 @@ export function SupplierPortraitDashboard() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* 顶部：下拉切换物流仓 */}
+      {/* 顶部：下拉切换物流仓 + 刷新 */}
       <div className="shrink-0 border-b border-black/5 px-4 py-3 dark:border-white/5">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          供应商画像看板
-        </h2>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            供应商画像看板
+          </h2>
+          <button
+            type="button"
+            onClick={() => {
+              void load();
+              requestPoDashboardRefresh();
+            }}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-black/5 disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/10"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>刷新</span>
+          </button>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -122,13 +196,25 @@ export function SupplierPortraitDashboard() {
         </DropdownMenu>
         {当前仓 && (
           <p className="mt-2 text-[11px] text-muted-foreground">
-            画像版本 {供应商画像表.画像版本} · 覆盖范围 {当前仓.覆盖范围[0]}–{当前仓.覆盖范围[1]}
+            画像版本 {画像表.画像版本} · 覆盖范围 {当前仓.覆盖范围[0]}–{当前仓.覆盖范围[1]}
           </p>
         )}
       </div>
 
       {/* 主体：按供应商聚合的条目 */}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        {error && (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+            {error}
+          </div>
+        )}
+        {!error && 仓库列表.length === 0 && (
+          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
+            <Warehouse className="h-8 w-8 opacity-40" />
+            <p className="text-sm">暂无供应商画像数据</p>
+            <p className="text-[11px]">画像由 weights-guard 从 TS 真源定期刷新，刷新后手动点右上角刷新载入。</p>
+          </div>
+        )}
         {供应商分组.map(({ 供应商, 行组 }) => (
           <section
             key={供应商}

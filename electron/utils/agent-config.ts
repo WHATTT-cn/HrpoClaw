@@ -12,6 +12,7 @@ import {
   applyModelAwareCompactionReserveTokensFloor,
   resolveModelContextWindow,
 } from './openclaw-compaction';
+import portraitSeed from '@shared/po-supplier-portrait.json';
 
 const MAIN_AGENT_ID = 'main';
 const MAIN_AGENT_NAME = 'Main Agent';
@@ -829,6 +830,87 @@ async function ensurePresetPoDecisionFile(): Promise<void> {
   logger.info('Provisioned preset PO decision seed file', { path: target });
 }
 
+/** 供应商画像看板数据文件名(与 SupplierPortraitDashboard 运行时读取路径一致)。 */
+const PRESET_PO_PORTRAIT_FILE = '供应商画像.json';
+const PRESET_PO_PORTRAIT_SEED_CONTENT = `${JSON.stringify(portraitSeed, null, 2)}\n`;
+
+/**
+ * 幂等写入 PO workspace 的供应商画像看板种子数据(供应商画像.json)。
+ *
+ * - 目标 `~/.openclaw/workspace-po/供应商画像.json`;已存在则跳过。
+ * - 种子来自 `@shared/po-supplier-portrait.json`,由 gen-portrait-md.mjs 从 TS 真源派生。
+ * - 语义:预置仅兜底首次写入;画像「定期全量刷新」由重跑 gen 脚本覆盖 workspace json 落地
+ *   (职责分离:预置=兜底,脚本=刷新,与用工决策.json 幂等模式一致)。
+ */
+async function ensurePresetPoPortraitFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
+  const target = join(workspace, PRESET_PO_PORTRAIT_FILE);
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(workspace);
+  await writeFile(target, PRESET_PO_PORTRAIT_SEED_CONTENT, 'utf8');
+  logger.info('Provisioned preset PO portrait seed file', { path: target });
+}
+
+/** PO 看板分析 skill 的 slug(写入 workspace 的 skills/<slug>/SKILL.md)。 */
+const PRESET_PO_DASHBOARD_SKILL_SLUG = 'po-dashboard-analysis';
+const PRESET_PO_DASHBOARD_SKILL_CONTENT = `---
+name: po-dashboard-analysis
+description: 通读供应商画像权威表,以单个物流仓为维度逐仓评估「用工保障」与「供应商分单」的建议与风险。看板分析触发/画像刷新时会以固定提示词调用本 skill。
+---
+
+# 供应商画像看板分析
+
+你负责通读供应商画像权威数据表,以**单个物流仓**为维度,逐仓分析并输出该仓在「用工保障」与「供应商分单」两个任务下的**建议**与**风险提示**。
+
+## 数据来源
+
+调用 \`read_file\` 读取 workspace 根目录的 \`Suppliers.md\`(供应商画像权威表)。该文件按物流仓分节(标题形如 \`## X物流仓（覆盖 a–b）\`),每节是一张 markdown 表格。**所有分析必须基于表内真实数值,不得编造;无对应数据时如实说明。**
+
+## 分析维度(逐仓)
+
+对每个物流仓,分别从两个任务角度分析:
+
+### 用工保障
+关注 供给率 / 到岗天数 / 考勤率 / 离职率 / 人效 几列:
+- 供给率偏低(< 0.9)→ 到岗缺口风险
+- 到岗天数偏长 → 响应慢、爬坡期风险
+- 考勤率低 / 离职率高 → 用工稳定性风险
+- 人效差异 → 影响理论用工数换算
+
+### 供应商分单
+关注 价格 / 档级 / 需求量区间 / 区间宽度pp(置信度)/ 临界量 几列:
+- 价格与档级组合 → 综合成本高低
+- 区间宽度pp 偏大(> 8)→ 置信度低,预测不可靠
+- 临界量 → 供应量上限约束
+
+## 输出格式
+
+按物流仓分节输出,每仓给出:
+- **用工保障建议**:一到两条可执行建议
+- **供应商分单建议**:一到两条可执行建议
+- **风险提示**:该仓需重点关注的风险(供给缺口 / 稳定性 / 成本 / 置信度等)
+
+保持简洁,聚焦决策价值,不要整段回抄原始表格。
+`;
+
+/**
+ * 幂等写入 PO workspace 的看板分析 skill(SKILL.md)。
+ * 目标 \`~/.openclaw/workspace-po/skills/po-dashboard-analysis/SKILL.md\`;已存在则跳过。
+ */
+async function ensurePresetPoDashboardSkillFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
+  const skillDir = join(workspace, 'skills', PRESET_PO_DASHBOARD_SKILL_SLUG);
+  const target = join(skillDir, 'SKILL.md');
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(skillDir);
+  await writeFile(target, PRESET_PO_DASHBOARD_SKILL_CONTENT, 'utf8');
+  logger.info('Provisioned preset PO dashboard skill', { path: target });
+}
+
 /**
  * 幂等预置 PO 子 Agent。
  *
@@ -848,13 +930,17 @@ export async function ensurePresetPoAgent(): Promise<{ created: boolean }> {
       // PO 已存在：仍幂等确保各预置文件存在（覆盖老环境升级场景）。
       await ensurePresetPoExperienceFile();
       await ensurePresetPoDecisionSkillFile();
+      await ensurePresetPoDashboardSkillFile();
       await ensurePresetPoDecisionFile();
+      await ensurePresetPoPortraitFile();
       return { created: false };
     }
     await createAgent(PRESET_PO_AGENT_NAME, { inheritWorkspace: true });
     await ensurePresetPoExperienceFile();
     await ensurePresetPoDecisionSkillFile();
+    await ensurePresetPoDashboardSkillFile();
     await ensurePresetPoDecisionFile();
+    await ensurePresetPoPortraitFile();
     logger.info('Provisioned preset PO agent', { agentId: PRESET_PO_AGENT_ID });
     return { created: true };
   } catch (error) {

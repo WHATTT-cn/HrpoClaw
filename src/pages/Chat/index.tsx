@@ -3,7 +3,7 @@
  * ACP-native runtime rendering through the ordered inline timeline.
  */
 import { Suspense, lazy, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
-import { AlertTriangle, ArrowDownToLine, FolderOpen } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, FolderOpen, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { DEFAULT_SESSION_KEY } from '@shared/chat/types';
@@ -36,8 +36,20 @@ import { AcpTimeline } from './AcpTimeline';
 import { AcpErrorBanner } from './AcpErrorBanner';
 import { SupplierPortraitDashboard } from './SupplierPortraitDashboard';
 import { SupplierDecisionDashboard } from './SupplierDecisionDashboard';
+import { isPoDashboardSessionKey, usePoDashboardAnalysisStore } from '@/stores/po-dashboard-analysis';
 
 const PRESET_PO_AGENT_ID = 'po';
+
+/** PO 看板分析 Tab 的固定触发提示词（对用户隐藏，切 Tab/刷新时自动发送以触发 po-dashboard-analysis skill）。 */
+const PO_DASHBOARD_ANALYSIS_PROMPT = [
+  '请调用 po-dashboard-analysis 技能，阅读工作区根目录下的 Suppliers.md，',
+  '以单个物流仓为维度（按「## X物流仓」分节）逐仓分析，',
+  '针对「用工保障」和「供应商分单」两项任务，分别给出建议与风险提示。',
+  '不要回抄原始表格数据。',
+].join('');
+
+/** PO agent 右半区对话列的两种视图。 */
+type PoRightTab = 'chat' | 'dashboard';
 
 type PoDashboardTab = 'portrait' | 'decision';
 
@@ -174,6 +186,72 @@ function AcpEmptyState() {
       <h1 className="text-4xl font-serif font-normal tracking-tight text-foreground/80 md:text-5xl">
         {t('welcome.subtitle')}
       </h1>
+    </div>
+  );
+}
+
+/**
+ * 看板分析 Tab 专属的空态提示。因为固定提示词对用户隐藏、user 段被过滤，
+ * timeline 为空时不能沿用通用「我能为你做些什么」空态，否则会误导用户以为未触发。
+ * 按当前运行状态区分：分析中 / 失败可重试 / 空闲无输出。
+ */
+function PoDashboardAnalysisState({
+  status,
+  errorMessage,
+  onRetry,
+}: {
+  status: 'running' | 'error' | 'idle';
+  errorMessage?: string | null;
+  onRetry: () => void;
+}) {
+  if (status === 'running') {
+    return (
+      <div
+        data-testid="po-dashboard-analysis-running"
+        className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center"
+      >
+        <LoadingSpinner size="md" />
+        <p className="text-sm text-muted-foreground">正在分析供应商画像数据，请稍候…</p>
+      </div>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <div
+        data-testid="po-dashboard-analysis-error"
+        className="flex h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center"
+      >
+        <p className="text-sm font-medium text-foreground">看板分析未能完成</p>
+        <p className="max-w-md text-xs text-muted-foreground">
+          {errorMessage || '大模型请求超时或失败，未返回分析结果。'}
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          data-testid="po-dashboard-analysis-retry"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          <span>重新分析</span>
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div
+      data-testid="po-dashboard-analysis-idle"
+      className="flex h-[60vh] flex-col items-center justify-center gap-3 px-6 text-center"
+    >
+      <p className="text-sm text-muted-foreground">尚无分析结果。</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        data-testid="po-dashboard-analysis-start"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-black/5 dark:border-white/10 dark:hover:bg-white/10"
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+        <span>开始分析</span>
+      </button>
     </div>
   );
 }
@@ -502,6 +580,142 @@ export function Chat() {
     setComposerDraft(currentSessionKey, update);
   }, [currentSessionKey, setComposerDraft]);
 
+  // 提取「加载会话并发送 prompt」的共享逻辑，供普通 onSend 与看板分析隐藏触发复用。
+  const runAcpPrompt = useCallback((params: {
+    sessionKey: string;
+    promptCwd: string;
+    text: string;
+    media?: Parameters<typeof sendAcpPrompt>[0]['media'];
+    createIfMissing: boolean;
+  }) => {
+    const { sessionKey, promptCwd, text, media, createIfMissing } = params;
+    setLastPromptAttemptSessionKey(sessionKey);
+    void (async () => {
+      if (promptCwd !== cwd) {
+        const promptWorkspace = await hostApi.files.resolveWorkspaceContext({
+          workspaceRoot: promptCwd,
+          executionCwd: promptCwd,
+        }).catch(() => ({ ok: false }));
+        if (!promptWorkspace.ok) return;
+      }
+      if (
+        createIfMissing
+        || acpActiveSessionKey !== sessionKey
+        || acpWorkspaceRoot !== promptCwd
+        || acpCwd !== promptCwd
+      ) {
+        const acpLoadKey = `${sessionKey}\0${promptCwd}`;
+        acpLoadInFlightKeyRef.current = acpLoadKey;
+        const loaded = await (async () => {
+          try {
+            return await loadAcpSession({
+              sessionKey,
+              workspaceRoot: promptCwd,
+              cwd: promptCwd,
+              ...(createIfMissing ? { createIfMissing: true } : {}),
+            });
+          } finally {
+            if (acpLoadInFlightKeyRef.current === acpLoadKey) {
+              acpLoadInFlightKeyRef.current = null;
+            }
+          }
+        })();
+        if (loaded && createIfMissing) {
+          acknowledgeAcpSessionCreated(sessionKey, promptCwd, text);
+        }
+        if (!loaded) return;
+      }
+      const sendPromise = sendAcpPrompt({
+        sessionKey,
+        cwd: promptCwd,
+        message: text,
+        media,
+      });
+      requestAnimationFrame(() => {
+        void scrollToBottom({ animation: 'instant', ignoreEscapes: true });
+      });
+      await sendPromise;
+    })();
+  }, [acpActiveSessionKey, acpCwd, acpWorkspaceRoot, acknowledgeAcpSessionCreated, cwd, loadAcpSession, scrollToBottom, sendAcpPrompt]);
+
+  // ── PO 看板分析 Tab（阶段四）──────────────────────────────────────────
+  const isPoAgent = currentAgentId === PRESET_PO_AGENT_ID;
+  const poDashboardSessionKey = usePoDashboardAnalysisStore((s) => s.sessionKey);
+  const startPoDashboardSession = usePoDashboardAnalysisStore((s) => s.startNewSession);
+  // 右半区 Tab 由当前会话 key 派生：命中 dashboard key 即处于「看板分析」视图。
+  // 这样即便用户从侧栏切走其它会话，视图也能与全局会话天然保持一致。
+  const poRightTab: PoRightTab = isPoDashboardSessionKey(currentSessionKey) ? 'dashboard' : 'chat';
+  // 记住最后一次「对话」会话 key，供从看板分析 Tab 切回时恢复。
+  const lastChatSessionKeyRef = useRef<string>(DEFAULT_SESSION_KEY);
+  useEffect(() => {
+    if (!isPoDashboardSessionKey(currentSessionKey)) {
+      lastChatSessionKeyRef.current = currentSessionKey;
+    }
+  }, [currentSessionKey]);
+
+  // 统一入口：新建看板分析会话（时间戳 key，模拟覆盖旧记录）并隐藏触发一次分析。
+  const triggerPoDashboardAnalysis = useCallback(() => {
+    const newKey = startPoDashboardSession();
+    selectAcpSession(newKey, cwd);
+    runAcpPrompt({
+      sessionKey: newKey,
+      promptCwd: cwd,
+      text: PO_DASHBOARD_ANALYSIS_PROMPT,
+      createIfMissing: true,
+    });
+  }, [cwd, runAcpPrompt, selectAcpSession, startPoDashboardSession]);
+
+  const handleSelectPoRightTab = useCallback((nextTab: PoRightTab) => {
+    if (nextTab === poRightTab) return;
+    if (nextTab === 'chat') {
+      selectAcpSession(lastChatSessionKeyRef.current);
+      return;
+    }
+    // 切到看板分析：有历史则仅加载复用，无历史则新建会话并隐藏触发一次分析。
+    if (poDashboardSessionKey) {
+      selectAcpSession(poDashboardSessionKey, cwd);
+      return;
+    }
+    triggerPoDashboardAnalysis();
+  }, [cwd, poDashboardSessionKey, poRightTab, selectAcpSession, triggerPoDashboardAnalysis]);
+
+  const showPoRightTabs = isPoAgent;
+  const isPoDashboardView = showPoRightTabs && poRightTab === 'dashboard';
+
+  // 画像刷新按钮触发的看板分析重跑：refreshSignal 变化时重建会话并隐藏触发一次分析。
+  // 用 ref 记住已处理的 signal，避免初次挂载（0）误触发。
+  const poRefreshSignal = usePoDashboardAnalysisStore((s) => s.refreshSignal);
+  const lastHandledRefreshSignalRef = useRef(poRefreshSignal);
+  useEffect(() => {
+    if (poRefreshSignal === lastHandledRefreshSignalRef.current) return;
+    lastHandledRefreshSignalRef.current = poRefreshSignal;
+    if (!isPoAgent) return;
+    // 重建会话覆盖旧记录（ClawX 无清空 transcript API，用新时间戳 key 模拟）。
+    triggerPoDashboardAnalysis();
+  }, [poRefreshSignal, isPoAgent, triggerPoDashboardAnalysis]);
+
+  // 看板分析视图下 timeline 为空时的状态：分析中 / 失败 / 空闲。
+  const poDashboardAnalysisStatus: 'running' | 'error' | 'idle' =
+    acpSending || acpCancelling || acpLoading
+      ? 'running'
+      : visibleAcpError
+        ? 'error'
+        : 'idle';
+
+  // 看板分析视图下的可见项数：user 段被隐藏，需排除后判断是否真的有可见输出。
+  const poDashboardVisibleItemCount = useMemo(() => {
+    let count = 0;
+    for (const itemId of visibleAcpTimeline.itemOrder) {
+      const item = visibleAcpTimeline.itemsById[itemId];
+      if (item?.kind === 'message-segment' && item.role === 'user') continue;
+      count += 1;
+    }
+    return count;
+  }, [visibleAcpTimeline]);
+
+  // 看板分析视图下，若可见输出为空（仅隐藏的 user 段），则用状态提示替代 timeline。
+  const showPoDashboardState = isPoDashboardView && poDashboardVisibleItemCount === 0;
+
   return (
     <div
       ref={splitContainerRef}
@@ -548,6 +762,30 @@ export function Chat() {
           </div>
         </div>
 
+        {showPoRightTabs && (
+          <div className="flex shrink-0 gap-1 border-b border-black/5 px-4 pb-0 pt-1 dark:border-white/10">
+            {([
+              { key: 'chat', label: '对话' },
+              { key: 'dashboard', label: '看板分析' },
+            ] as { key: PoRightTab; label: string }[]).map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                data-testid={`po-right-tab-${item.key}`}
+                onClick={() => handleSelectPoRightTab(item.key)}
+                className={cn(
+                  'rounded-t-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                  poRightTab === item.key
+                    ? 'bg-black/5 text-foreground dark:bg-white/10'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="relative min-h-0 flex-1 overflow-hidden px-4 py-4">
           <div className="relative mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col">
             <div data-testid="chat-scroll-column" className="relative min-h-0 min-w-0 flex-1">
@@ -565,6 +803,12 @@ export function Chat() {
                     <div className="flex min-h-[40vh] items-center justify-center" data-testid="acp-chat-loading">
                       <LoadingSpinner size="md" />
                     </div>
+                  ) : showPoDashboardState ? (
+                    <PoDashboardAnalysisState
+                      status={poDashboardAnalysisStatus}
+                      errorMessage={visibleAcpError}
+                      onRetry={triggerPoDashboardAnalysis}
+                    />
                   ) : visibleAcpTimeline.itemOrder.length === 0 ? (
                     <AcpEmptyState />
                   ) : (
@@ -573,6 +817,7 @@ export function Chat() {
                       isStreaming={acpSending || acpCancelling}
                       turnTimingsByUserMessageId={acpTurnTimings}
                       fileActivity={fileActivity}
+                      hideUserSegments={isPoDashboardView}
                       workspaceRoot={resolvedWorkspaceContext?.key === workspaceContextKey
                         ? resolvedWorkspaceContext.workspaceRoot
                         : undefined}
@@ -603,90 +848,46 @@ export function Chat() {
           </div>
         </div>
 
-        <ChatInput
-          draft={composerDraft}
-          onDraftChange={handleComposerDraftChange}
-          onSend={(text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => {
-            if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;
-            const targetAgent = targetAgentId
-              ? agents.find((agent) => agent.id === targetAgentId) ?? null
-              : null;
-            const sessionKey = targetAgent
-              ? targetAgent.mainSessionKey || `agent:${targetAgent.id}:main`
-              : currentSessionKey;
-            const existingSession = sessions.find((session) => session.key === sessionKey);
-            setLastPromptAttemptSessionKey(sessionKey);
-            const promptCwd = targetAgent?.workspace || cwd;
-            const media = attachments
-              ?.filter((file) => file.status === 'ready')
-              .map((file) => ({
-                filePath: file.stagedPath,
-                stagingId: file.id,
-                fileName: file.fileName,
-                mimeType: file.mimeType,
-              }));
-            if (targetAgent || !existingSession) {
-              selectAcpSession(sessionKey, promptCwd);
-            }
-            void (async () => {
-              if (promptCwd !== cwd) {
-                const promptWorkspace = await hostApi.files.resolveWorkspaceContext({
-                  workspaceRoot: promptCwd,
-                  executionCwd: promptCwd,
-                }).catch(() => ({ ok: false }));
-                if (!promptWorkspace.ok) return;
+        {!isPoDashboardView && (
+          <ChatInput
+            draft={composerDraft}
+            onDraftChange={handleComposerDraftChange}
+            onSend={(text: string, attachments?: FileAttachment[], targetAgentId?: string | null) => {
+              if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;
+              const targetAgent = targetAgentId
+                ? agents.find((agent) => agent.id === targetAgentId) ?? null
+                : null;
+              const sessionKey = targetAgent
+                ? targetAgent.mainSessionKey || `agent:${targetAgent.id}:main`
+                : currentSessionKey;
+              const existingSession = sessions.find((session) => session.key === sessionKey);
+              const promptCwd = targetAgent?.workspace || cwd;
+              const media = attachments
+                ?.filter((file) => file.status === 'ready')
+                .map((file) => ({
+                  filePath: file.stagedPath,
+                  stagingId: file.id,
+                  fileName: file.fileName,
+                  mimeType: file.mimeType,
+                }));
+              if (targetAgent || !existingSession) {
+                selectAcpSession(sessionKey, promptCwd);
               }
               const createIfMissing = !existingSession || !!existingSession.createdLocally;
-              if (
-                createIfMissing
-                || acpActiveSessionKey !== sessionKey
-                || acpWorkspaceRoot !== promptCwd
-                || acpCwd !== promptCwd
-              ) {
-                const acpLoadKey = `${sessionKey}\0${promptCwd}`;
-                acpLoadInFlightKeyRef.current = acpLoadKey;
-                const loaded = await (async () => {
-                  try {
-                    return await loadAcpSession({
-                      sessionKey,
-                      workspaceRoot: promptCwd,
-                      cwd: promptCwd,
-                      ...(createIfMissing ? { createIfMissing: true } : {}),
-                    });
-                  } finally {
-                    if (acpLoadInFlightKeyRef.current === acpLoadKey) {
-                      acpLoadInFlightKeyRef.current = null;
-                    }
-                  }
-                })();
-                if (loaded && createIfMissing) {
-                  acknowledgeAcpSessionCreated(sessionKey, promptCwd, text);
-                }
-                if (!loaded) return;
-              }
-              const sendPromise = sendAcpPrompt({
-                sessionKey,
-                cwd: promptCwd,
-                message: text,
-                media,
-              });
-              requestAnimationFrame(() => {
-                void scrollToBottom({ animation: 'instant', ignoreEscapes: true });
-              });
-              await sendPromise;
-            })();
-          }}
-          onStop={() => void cancelAcp()}
-          disabled={acpLoading || acpCancelling || !cwd || !workspaceContextAvailable}
-          sending={composerBusy}
-          imageGenerating={imageGenerationPending}
-          workspaceLabel={workspaceLabel}
-          workspacePath={cwd}
-          workspaceOptions={workspaceOptions}
-          workspaceReadOnly={effectiveWorkspace.readOnly}
-          onSelectWorkspace={setChatWorkspacePath}
-          contextUsage={composerContextUsage}
-        />
+              runAcpPrompt({ sessionKey, promptCwd, text, media, createIfMissing });
+            }}
+            onStop={() => void cancelAcp()}
+            disabled={acpLoading || acpCancelling || !cwd || !workspaceContextAvailable}
+            sending={composerBusy}
+            imageGenerating={imageGenerationPending}
+            workspaceLabel={workspaceLabel}
+            workspacePath={cwd}
+            workspaceOptions={workspaceOptions}
+            workspaceReadOnly={effectiveWorkspace.readOnly}
+            onSelectWorkspace={setChatWorkspacePath}
+            contextUsage={composerContextUsage}
+          />
+        )}
       </div>
 
       {panelOpen && (
