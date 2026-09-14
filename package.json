@@ -35,6 +35,7 @@
     "license": "MIT",
     "private": true,
     "scripts": {
+        "gen:decisions": "node scripts/gen-decisions.mjs",
         "postinstall": "node scripts/patch-browser-hint.mjs",
         "init": "pnpm install && pnpm run uv:download && pnpm run agent-browser:download",
         "predev": "node scripts/generate-ext-bridge.mjs && zx scripts/prepare-preinstalled-skills-dev.mjs",

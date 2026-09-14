@@ -360,7 +360,7 @@ function buildTrustedOfficialPluginInstallRecord(
   const definition = TRUSTED_OFFICIAL_EXTENSION_PLUGINS[pluginDirName];
   if (!definition) return null;
 
-  const version = readPluginVersion(join(targetDir, 'package.json'));
+  const version = readPluginDirVersion(targetDir);
   const installPath = normalizePluginInstallPathForRecord(targetDir);
   if (!version || !installPath) return null;
 
@@ -662,6 +662,21 @@ function readPluginVersion(pkgJsonPath: string): string | null {
   }
 }
 
+/**
+ * Read a plugin directory version, falling back to openclaw.plugin.json.
+ *
+ * Local ClawX plugins were historically shipped without a package.json
+ * (po-decisions before 0.2.0), which made the upgrade check bail out with
+ * "unable to compare" and silently kept stale business files installed.
+ * The manifest always carries a version, so use it as a fallback.
+ */
+function readPluginDirVersion(pluginDir: string): string | null {
+  return (
+    readPluginVersion(join(pluginDir, 'package.json'))
+    ?? readPluginVersion(join(pluginDir, 'openclaw.plugin.json'))
+  );
+}
+
 // ── pnpm-aware node_modules copy helpers ─────────────────────────────────────
 
 /** Walk up from a path until we find a parent named node_modules. */
@@ -799,14 +814,18 @@ export async function ensurePluginInstalled(
     if (!sourceDir) {
       return await finalizeInstalledMirror(); // no bundled source to compare, keep existing
     }
-    const installedVersion = readPluginVersion(targetPkgJson);
-    const sourceVersion = readPluginVersion(join(sourceDir, 'package.json'));
-    if (!sourceVersion || !installedVersion || sourceVersion === installedVersion) {
-      return await finalizeInstalledMirror(); // same version or unable to compare
+    const installedVersion = readPluginDirVersion(targetDir);
+    const sourceVersion = readPluginDirVersion(sourceDir);
+    if (!sourceVersion) {
+      return await finalizeInstalledMirror(); // bundled source has no version metadata
     }
-    // Version differs — fall through to overwrite install
+    if (installedVersion === sourceVersion) {
+      return await finalizeInstalledMirror(); // already up to date
+    }
+    // Version differs (or the installed copy carries no version at all — treat a
+    // metadata-less install as stale so bundled business files can be refreshed).
     logger.info(
-      `[plugin] Upgrading ${pluginLabel} plugin: ${installedVersion} → ${sourceVersion}`,
+      `[plugin] Upgrading ${pluginLabel} plugin: ${installedVersion ?? 'unknown'} → ${sourceVersion}`,
     );
   }
 

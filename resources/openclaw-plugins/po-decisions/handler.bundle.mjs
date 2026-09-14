@@ -1,10 +1,15 @@
 /**
  * po-decisions 运行时核心(内联业务逻辑,不经 monorepo tsup)。
  *
- * 与 experience-capture 同构,差异:
- *  - 数据载体为结构化 JSON(用工决策.json,根 { records: [...] }),而非 Markdown 追加。
- *  - 提供 record_decision(人审写)+ read_decision(只读查重)两个工具。
- *  - 决策单号由插件按年递增生成(PO-2026-001),模型不得编造。
+ * ⚠️ 写链已整体退役:履约追踪看板改为「TS 真源 `src/data/supplier-decision-table.ts`
+ *    → `pnpm gen:decisions` 全量派生 用工决策.json」。本文件中所有与
+ *    record_decision / 人审 / 追加落库相关的导出均已标注 @deprecated,仅作历史存档,
+ *    **无调用方**;请勿在新代码中启用。
+ *
+ * 现行仍在使用的导出:
+ *  - READ_TOOL_NAME / READ_DECISION_PARAMETERS / readRecords / resolveDecisionPath(只读查询);
+ *  - RECORD_TOOL_NAME / isRecordTool / RECORD_TOOL_RETIRED_REASON(识别并阻断残留写调用);
+ *  - buildReadOnlyGuidance / buildReadOnlyPromptInjection(只读语义的 prompt 注入)。
  *
  * 落库副作用(fs)全部通过参数注入,本文件保持纯逻辑可测。
  * 供薄入口 index.mjs 在 registerHook/registerTool 时调用。
@@ -12,8 +17,19 @@
 
 // ── 常量与默认配置 ───────────────────────────────────────────────────────────
 
-/** 承载"登记一条用工决策"意图的写工具名。before_tool_call 仅拦截此工具。 */
+/**
+ * 已退役的写工具名。仍导出仅为:1) before_tool_call 识别历史会话残留调用并阻断;
+ * 2) 保留旧实现可读性。插件不再注册该工具。
+ */
 export const RECORD_TOOL_NAME = 'record_decision';
+
+/** 命中已退役写工具时反馈给模型的阻断原因。 */
+export const RECORD_TOOL_RETIRED_REASON = [
+  `\`${'record_decision'}\` 已停用:用工决策看板现为只读派生数据,禁止通过工具写入。`,
+  '唯一人工维护真源是 ClawX 仓库的 `src/data/supplier-decision-table.ts`;',
+  '更新方式:编辑该 TS 文件后运行 `pnpm gen:decisions` 全量覆盖 用工决策.json,再在看板刷新。',
+  '请把本次定案结论(物流仓 / 供应商 / 承接人数或档级 / 决策依据)如实复述给用户,由其登记到真源。',
+].join('\n');
 
 /** 只读查重工具名。不拦截、不走人审。 */
 export const READ_TOOL_NAME = 'read_decision';
@@ -29,7 +45,7 @@ export const DEFAULT_CONFIG = {
   timeoutBehavior: 'deny',
 };
 
-/** 判断给定 toolName 是否为本插件的写工具(需人审)。 */
+/** 判断给定 toolName 是否为已退役的写工具(命中即阻断)。 */
 export function isRecordTool(toolName) {
 return typeof toolName === 'string' && toolName === RECORD_TOOL_NAME;
 }
@@ -60,6 +76,8 @@ return [homeDir, '.openclaw', 'workspace-po', '用工决策.json'].join('/');
 // ── 入参 JSON Schema(纯字面量,单一来源) ─────────────────────────────────────
 
 /**
+ * @deprecated 已弃用:record_decision 入参 schema。写工具已停止注册,**已无调用方**。
+ *
  * record_decision 入参 schema。
  * 注意:decisionNo 不在入参中——由插件按年递增生成,防止模型编造单号。
  */
@@ -160,7 +178,11 @@ function todayStr(now) {
   return `${y}-${m}-${day}`;
 }
 
-/** 校验并规整工具入参为决策记录(缺 decisionNo/date,后续补)。非法则抛错(fail-closed)。 */
+/**
+ * @deprecated 已弃用:写链专用的入参校验。**已无调用方**(仅 persistEntry/handleBeforeToolCall 曾使用)。
+ *
+ * 校验并规整工具入参为决策记录(缺 decisionNo/date,后续补)。非法则抛错(fail-closed)。
+ */
 export function parseToolParams(raw) {
   if (!raw || typeof raw !== 'object') {
     throw new Error('record_decision: 缺少参数对象');
@@ -183,6 +205,12 @@ export function parseToolParams(raw) {
 }
 
 /**
+ * @deprecated 已弃用:人审通过后追加落库。
+ *
+ * 履约追踪改为「TS 真源 → `pnpm gen:decisions` 全量派生」后,用工决策.json 为只读产物,
+ * 任何追加都会在下次重跑脚本时被覆盖,且会破坏唯一真源约束。
+ * 本函数保留作历史存档,**已无调用方**(index.mjs 不再注册写工具、不再发人审)。
+ *
  * 端到端落库:读取(或初始化)→ 生成单号/日期 → 追加 → 写回。
  * @returns 实际写入的完整记录(含 decisionNo)。
  */
@@ -197,7 +225,11 @@ export async function persistEntry(fs, filePath, entry, now) {
   return full;
 }
 
-/** 人审弹窗展示用:把决策渲染成可读的确认文本。 */
+/**
+ * @deprecated 已弃用:人审弹窗文案。**已无调用方**。
+ *
+ * 人审弹窗展示用:把决策渲染成可读的确认文本。
+ */
 export function renderApprovalDescription(entry) {
   return [
     '检测到一条已确认的用工分单决策,是否登记到用工决策看板?',
@@ -219,6 +251,9 @@ function isAllow(decision) {
 }
 
 /**
+ * @deprecated 已弃用:人审弹窗 + onResolution 写库。看板改为只读派生,写链整体退役。
+ * 保留作历史存档,**已无调用方**。
+ *
  * 为一条决策构造 before_tool_call 的 requireApproval 规格。
  * 用户确认(allow)后由 onResolution 写入 用工决策.json;拒绝/超时则丢弃。
  */
@@ -251,6 +286,10 @@ export function buildRequireApproval(entry, config, deps, pluginId) {
 // ── before_tool_call 决策入口 ────────────────────────────────────────────────
 
 /**
+ * @deprecated 已弃用:「命中 record_decision → 发人审」的旧拦截入口。
+ * 现行 index.mjs 直接对残留调用返回 { block, blockReason: RECORD_TOOL_RETIRED_REASON }。
+ * 保留作历史存档,**已无调用方**。
+ *
  * before_tool_call 拦截入口:仅处理 record_decision。
  *
  * @returns
@@ -284,7 +323,12 @@ export function handleBeforeToolCall(input) {
 
 // ── before_prompt_build 指引注入 ─────────────────────────────────────────────
 
-/** 生成注入的系统指引文本。 */
+/**
+ * @deprecated 已弃用:引导模型调用 `record_decision` 登记的旧注入文案。
+ * 现行注入见 buildReadOnlyGuidance()。保留作历史存档,**已无调用方**。
+ *
+ * 生成注入的系统指引文本。
+ */
 export function buildGuidance() {
   return [
     '## 用工决策登记',
@@ -318,7 +362,39 @@ export function buildGuidance() {
   ].join('\n');
 }
 
-/** 供 before_prompt_build hook 直接返回的结果构造器。 */
+/**
+ * @deprecated 已弃用:写入引导的注入构造器。现行请用 buildReadOnlyPromptInjection()。
+ * 保留作历史存档,**已无调用方**。
+ */
 export function buildPromptInjection() {
   return { prependSystemContext: buildGuidance() };
+}
+
+// ── 现行 before_prompt_build 注入(只读语义) ─────────────────────────────────
+
+/**
+ * 现行注入文案:声明用工决策看板为只读派生数据,并给出唯一正确的更新路径。
+ * 取代已弃用的 buildGuidance()。
+ */
+export function buildReadOnlyGuidance() {
+  return [
+    '## 用工决策看板(只读)',
+    '',
+    '用工决策看板的数据**不可**通过对话或工具写入。`用工决策.json` 是派生产物,',
+    '唯一人工维护真源是 ClawX 仓库的 `src/data/supplier-decision-table.ts`。',
+    '',
+    '- 查询已有决策:调用 `' + READ_TOOL_NAME + '`(唯一可用的决策工具)。',
+    '- 【严禁】调用 `' + RECORD_TOOL_NAME + '`(已停用,调用会被直接阻断);',
+    '- 【严禁】直接编辑 用工决策.json,或编造决策单号(decisionNo)。',
+    '',
+    '当用户敲定一次用工分单决策时,你应当:',
+    '1. 如实复述定案结论(物流仓 / 供应商 / 承接人数或档级 / 决策依据);',
+    '2. 告知其登记方式——编辑 `src/data/supplier-decision-table.ts` 后运行 `pnpm gen:decisions`,',
+    '   该脚本会全量覆盖 用工决策.json,随后在看板点刷新即可看到。',
+  ].join('\n');
+}
+
+/** 供 before_prompt_build hook 直接返回的结果构造器(只读语义)。 */
+export function buildReadOnlyPromptInjection() {
+  return { prependSystemContext: buildReadOnlyGuidance() };
 }

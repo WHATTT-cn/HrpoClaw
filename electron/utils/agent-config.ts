@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, readdir, rm, writeFile } from 'fs/promises';
+import { copyFile, lstat, mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
 import { join, normalize } from 'path';
 import { isDeepStrictEqual } from 'node:util';
 import { mutateOpenClawConfig } from '../gateway/config-delivery';
@@ -13,6 +13,7 @@ import {
   resolveModelContextWindow,
 } from './openclaw-compaction';
 import portraitSeed from '@shared/po-supplier-portrait.json';
+import decisionSeed from '@shared/po-supplier-decisions.json';
 
 const MAIN_AGENT_ID = 'main';
 const MAIN_AGENT_NAME = 'Main Agent';
@@ -744,7 +745,19 @@ async function ensurePresetPoExperienceFile(): Promise<void> {
 
 /** PO 用工决策登记 skill 的 slug（写入 workspace 的 skills/<slug>/SKILL.md）。 */
 const PRESET_PO_DECISION_SKILL_SLUG = 'po-decision-logging';
-const PRESET_PO_DECISION_SKILL_CONTENT = `---
+
+/**
+ * @deprecated 已弃用：引导模型调用 `record_decision` 发起人审登记的旧模板。
+ *
+ * 履约追踪改为「TS 真源 → gen 脚本派生」后看板变为只读，登记链路整体退役。
+ * 旧模板内容保留在下方注释中作历史存档，不再写入任何 workspace；请勿恢复使用。
+ *
+ * 旧流程：定案信号（定了/就这么定/按这个执行/确认分单）→ `read_decision` 查重
+ * → `record_decision`（warehouse/supplier/headcount/basis/date）→ 人审弹窗确认
+ * → 系统自动生成 decisionNo 并追加写入 用工决策.json。
+ */
+/* 旧模板存档（已注释弃用，请勿启用）：
+const PRESET_PO_DECISION_SKILL_CONTENT_LEGACY = `---
 name: po-decision-logging
 description: 当用户确认了一条用工分单决策(某物流仓交给某供应商承接多少人)后,把该决策登记进可写决策看板。识别到"定了/就这么定/按这个执行/确认分单"等定案信号时使用。
 ---
@@ -779,16 +792,72 @@ description: 当用户确认了一条用工分单决策(某物流仓交给某供
 
 调用后会弹出人工审批确认框,由用户最终确认是否写入看板。你只负责如实发起登记,不要替用户预设审批结果。
 `;
+旧模板存档结束 */
+
+/** 现行模板：只读说明。更新履约追踪须改 TS 真源并重跑生成脚本。 */
+const PRESET_PO_DECISION_SKILL_CONTENT = `---
+name: po-decision-logging
+description: 说明用工决策看板(履约追踪)为只读派生数据。当用户提出"登记决策/写入看板/更新履约追踪"时使用,告知正确的更新方式。
+---
+
+# 用工决策看板(只读)
+
+用工决策看板的数据**不可通过对话写入**。看板展示的 \`用工决策.json\` 是派生产物,
+唯一人工维护真源是 ClawX 仓库的 \`src/data/supplier-decision-table.ts\`。
+
+## 查询
+
+需要查看已有决策时调用 \`read_decision\` 读取当前记录,用于回答与查重。
+
+## 不要做的事
+
+- **不要**调用 \`record_decision\` 或任何写工具追加决策记录(该能力已停用)。
+- **不要**直接编辑 \`用工决策.json\`;任何直接写入都会在下次重跑生成脚本时被全量覆盖。
+- **不要**自行编造决策单号(decisionNo)。
+
+## 正确的更新方式
+
+当用户确认了一条新的用工分单决策,如实告知并引导:
+
+1. 在 ClawX 仓库编辑 \`src/data/supplier-decision-table.ts\`,新增或修改记录
+   (六个字段:decisionNo / date / warehouse / supplier / headcount / basis)。
+2. 运行 \`pnpm gen:decisions\`,全量派生覆盖 \`用工决策.json\` 与 shared 预置快照。
+3. 在看板点击刷新,重新读取最新数据。
+
+同时把本次定案的完整结论(仓、供应商、人数/档级、依据)清晰复述给用户,便于其登记到真源。
+`;
 
 /**
- * 幂等写入 PO workspace 的用工决策登记 skill(SKILL.md)。
- * 目标 `~/.openclaw/workspace-po/skills/po-decision-logging/SKILL.md`;已存在则跳过。
+ * 幂等写入 PO workspace 的用工决策 skill(SKILL.md)。
+ *
+ * 目标 `~/.openclaw/workspace-po/skills/po-decision-logging/SKILL.md`。
+ * 迁移语义:老环境已落盘的旧模板会主动引导模型调用已停用的 `record_decision`,
+ * 因此除「文件不存在」外,检测到残留旧写入引导时也覆盖为只读说明;
+ * 用户自行改写过、且不含旧写入引导的内容保持不动。
  */
 async function ensurePresetPoDecisionSkillFile(): Promise<void> {
   const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
   const skillDir = join(workspace, 'skills', PRESET_PO_DECISION_SKILL_SLUG);
   const target = join(skillDir, 'SKILL.md');
   if (await fileExists(target)) {
+    let existing: string;
+    try {
+      existing = await readFile(target, 'utf8');
+    } catch {
+      // 读取失败时不做任何猜测性覆盖，保持既有文件原样。
+      return;
+    }
+    if (existing === PRESET_PO_DECISION_SKILL_CONTENT) {
+      return;
+    }
+    // 只识别旧模板的专属特征（写入引导标题 + 调用指令），避免误覆盖用户自行改写的只读说明。
+    const isLegacyWriteTemplate = existing.includes('# 用工决策登记')
+      && existing.includes('调用 `record_decision` 工具');
+    if (!isLegacyWriteTemplate) {
+      return;
+    }
+    await writeFile(target, PRESET_PO_DECISION_SKILL_CONTENT, 'utf8');
+    logger.info('Migrated legacy PO decision skill to read-only', { path: target });
     return;
   }
   await ensureDir(skillDir);
@@ -796,28 +865,47 @@ async function ensurePresetPoDecisionSkillFile(): Promise<void> {
   logger.info('Provisioned preset PO decision skill', { path: target });
 }
 
-/** 用工决策看板数据文件名(与 po-decisions 插件落库路径一致)。 */
+/** 用工决策看板数据文件名(履约追踪看板运行时读取路径)。 */
 const PRESET_PO_DECISION_FILE = '用工决策.json';
-const PRESET_PO_DECISION_SEED_CONTENT = `${JSON.stringify(
-  {
-    records: [
-      {
-        decisionNo: 'PO-2026-001',
-        date: '2026-01-15',
-warehouse: 'A物流仓',
-        supplier: 'A供应商',
-  headcount: '12人 / 中批量档',
-        basis: 'A供应商本地班组成熟,新仓爬坡期优先承接,首轮豁免新供应商 10 人限额',
-      },
-    ],
-  },
-  null,
-  2,
-)}\n`;
 
 /**
- * 幂等写入 PO workspace 的用工决策看板种子数据(用工决策.json)。
- * 目标 `~/.openclaw/workspace-po/用工决策.json`;已存在则跳过(避免覆盖插件追加的真实记录)。
+ * @deprecated 已弃用:手写初始种子。
+ *
+ * 履约追踪已改为「TS 真源 -> gen 脚本派生」的同源管线(与供应商画像一致),
+ * 唯一人工维护源是 `src/data/supplier-decision-table.ts`,预置内容改由
+ * `@shared/po-supplier-decisions.json` 派生。此处保留旧种子仅作历史存档,
+ * 不再有任何调用方;请勿恢复使用。
+ */
+// const PRESET_PO_DECISION_SEED_CONTENT_DEPRECATED = `${JSON.stringify(
+//   {
+//     records: [
+//       {
+//         decisionNo: 'PO-2026-001',
+//         date: '2026-01-15',
+//         warehouse: 'A物流仓',
+//         supplier: 'A供应商',
+//         headcount: '12人 / 中批量档',
+//         basis: 'A供应商本地班组成熟,新仓爬坡期优先承接,首轮豁免新供应商 10 人限额',
+//       },
+//     ],
+//   },
+//   null,
+//   2,
+// )}\n`;
+
+/**
+ * 用工决策预置内容:来自 `@shared/po-supplier-decisions.json`,
+ * 由 `pnpm gen:decisions` 从 TS 真源 `src/data/supplier-decision-table.ts` 全量派生。
+ */
+const PRESET_PO_DECISION_SEED_CONTENT = `${JSON.stringify(decisionSeed, null, 2)}\n`;
+
+/**
+ * 幂等写入 PO workspace 的用工决策看板数据(用工决策.json)。
+ *
+ * - 目标 `~/.openclaw/workspace-po/用工决策.json`;已存在则跳过。
+ * - 种子来自 `@shared/po-supplier-decisions.json`,由 gen-decisions.mjs 从 TS 真源派生。
+ * - 语义:预置仅兜底首次写入;「全量刷新」由重跑 `pnpm gen:decisions` 覆盖 workspace json
+ *   (职责分离:预置=兜底,脚本=刷新,与供应商画像.json 幂等模式一致)。
  */
 async function ensurePresetPoDecisionFile(): Promise<void> {
   const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);

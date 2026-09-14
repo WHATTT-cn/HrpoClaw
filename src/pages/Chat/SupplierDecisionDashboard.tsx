@@ -1,8 +1,12 @@
 /**
- * 用工决策看板（可写）
+ * 履约追踪看板
  *
  * 仅在 PO agent 对话窗口渲染（见 Chat/index.tsx），与 SupplierPortraitDashboard 并列为一个 Tab。
- * 数据来源：`~/.openclaw/workspace-po/用工决策.json`（由 po-decisions 插件在人审通过后写入）。
+ * 数据来源：`~/.openclaw/workspace-po/用工决策.json`。
+ *
+ * ⚠️ 该 JSON 是**派生产物**，唯一人工维护真源是 `src/data/supplier-decision-table.ts`；
+ *    修改真源后运行 `pnpm gen:decisions` 全量覆盖 JSON 与 shared 预置快照，再在此点刷新。
+ *    插件写入（record_decision）与人审登记已弃用，本看板不提供任何编辑/追加入口。
  *
  * 结构：
  * - 顶部标题 + 刷新按钮：手动重新读取 JSON 文件。
@@ -12,23 +16,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, ClipboardList } from 'lucide-react';
 import { readTextFile } from '@/lib/file-preview-client';
+import type { DecisionRecord, DecisionsDoc } from '@/data/supplier-decision-table';
 
-/** 决策看板数据文件路径（与插件落库、agent-config 种子路径一致）。 */
+/** 决策看板数据文件路径（与生成脚本、agent-config 预置路径一致）。 */
 const DECISION_FILE_PATH = '~/.openclaw/workspace-po/用工决策.json';
-
-/** 单条用工决策记录，字段与 po-decisions 插件落库结构严格对齐。 */
-interface DecisionRecord {
-  decisionNo: string;
-  date: string;
-  warehouse: string;
-  supplier: string;
-  headcount: string;
-  basis: string;
-}
-
-interface DecisionsDoc {
-  records: DecisionRecord[];
-}
 
 /** 容错解析 JSON 文本为记录数组，任何异常都回退空数组。 */
 function parseRecords(text: string): DecisionRecord[] {
@@ -59,7 +50,10 @@ function Field({ label, value }: { label: string; value: string | number }) {
 /** 单条决策记录卡片。 */
 function RecordCard({ record }: { record: DecisionRecord }) {
   return (
-    <div className="rounded-xl border border-black/5 bg-black/[0.02] p-3 dark:border-white/5 dark:bg-white/[0.02]">
+    <div
+      data-testid="supplier-decision-record"
+      className="rounded-xl border border-black/5 bg-black/[0.02] p-3 dark:border-white/5 dark:bg-white/[0.02]"
+    >
       <div className="mb-2 flex items-center gap-2">
         <span className="rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-400">
           {record.decisionNo}
@@ -99,6 +93,7 @@ export function SupplierDecisionDashboard() {
         }
         return;
       }
+      // 全量替换：JSON 是派生产物，不做任何本地合并。
       setRecords(parseRecords(res.content ?? ''));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -113,11 +108,11 @@ export function SupplierDecisionDashboard() {
   }, [load]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div data-testid="supplier-decision-dashboard" className="flex h-full min-h-0 flex-col">
       {/* 顶部：标题 + 刷新 */}
       <div className="flex shrink-0 items-center justify-between border-b border-black/5 px-4 py-3 dark:border-white/5">
         <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          用工决策看板
+          履约追踪看板
         </h2>
         <button
           type="button"
@@ -141,7 +136,6 @@ export function SupplierDecisionDashboard() {
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-muted-foreground">
             <ClipboardList className="h-8 w-8 opacity-40" />
             <p className="text-sm">暂无用工决策记录</p>
-            <p className="text-[11px]">在对话中确认分单决策后，经人审通过即会写入此看板。</p>
           </div>
         )}
         {records.map((record) => (
@@ -151,5 +145,3 @@ export function SupplierDecisionDashboard() {
     </div>
   );
 }
-
-export default SupplierDecisionDashboard;
