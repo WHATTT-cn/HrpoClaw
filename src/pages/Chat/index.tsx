@@ -42,9 +42,10 @@ const PRESET_PO_AGENT_ID = 'po';
 
 /** PO 看板分析 Tab 的固定触发提示词（对用户隐藏，切 Tab/刷新时自动发送以触发 po-dashboard-analysis skill）。 */
 const PO_DASHBOARD_ANALYSIS_PROMPT = [
-  '请调用 po-dashboard-analysis 技能，阅读工作区根目录下的 Suppliers.md，',
+  '请调用 po-dashboard-analysis 技能，阅读工作区根目录下的 Suppliers.md 与 Rule.md，',
   '以单个物流仓为维度（按「## X物流仓」分节）逐仓分析，',
-  '针对「用工保障」和「供应商分单」两项任务，分别给出建议与风险提示。',
+  '针对「用工保障」和「供应商分单」两项任务，分别给出建议与风险提示，',
+  '并对照 Rule.md 的硬性规则给出规则校验结论（触线须指出违反的具体条目及修正方案）。',
   '不要回抄原始表格数据。',
 ].join('');
 

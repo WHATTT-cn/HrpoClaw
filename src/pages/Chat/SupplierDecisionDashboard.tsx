@@ -10,13 +10,15 @@
  *
  * 结构：
  * - 顶部标题 + 刷新按钮：手动重新读取 JSON 文件。
+ * - 主体上方：PO 日记日历板块（PoDiaryCalendar，独立的**可写**数据文件，与本文件的只读派生数据互不影响）。
  * - 主体：按决策记录逐条渲染为圆角卡片，展示单号/日期/仓/供应商/人数/依据。
- * - 空态：文件不存在或无记录时给出提示。
+ * - 空态：文件不存在或无记录时给出提示（仅针对决策记录，不影响日历板块）。
  */
 import { useCallback, useEffect, useState } from 'react';
 import { RefreshCw, ClipboardList } from 'lucide-react';
 import { readTextFile } from '@/lib/file-preview-client';
 import type { DecisionRecord, DecisionsDoc } from '@/data/supplier-decision-table';
+import { PoDiaryCalendar } from './PoDiaryCalendar';
 
 /** 决策看板数据文件路径（与生成脚本、agent-config 预置路径一致）。 */
 const DECISION_FILE_PATH = '~/.openclaw/workspace-po/用工决策.json';
@@ -125,8 +127,10 @@ export function SupplierDecisionDashboard() {
         </button>
       </div>
 
-      {/* 主体：决策记录列表 */}
+      {/* 主体：PO 日记日历 + 决策记录列表 */}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+        {/* PO 日记：可写运行时数据，独立读写 ~/.openclaw/workspace-po/PO日记.json */}
+        <PoDiaryCalendar />
         {error && (
           <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 text-xs text-red-600 dark:text-red-400">
             {error}

@@ -743,6 +743,58 @@ async function ensurePresetPoExperienceFile(): Promise<void> {
   logger.info('Provisioned preset PO experience file', { path: target });
 }
 
+/**
+ * PO Agent workspace 预置的**硬性业务规则集**。
+ *
+ * 与 Experience.md（软性线下经验，可被系数调节）的定位区别：
+ * Rule.md 是**不可违反的刚性约束**（份额上限、浮动区间等），看板分析必须逐条校验。
+ * 仅在首次创建时写入 workspace 根目录（Rule.md）；已存在则跳过，避免覆盖用户改动。
+ */
+const PRESET_PO_RULE_FILE = 'Rule.md';
+const PRESET_PO_RULE_CONTENT = `# PO 用工业务硬性规则集
+
+> 本文件是**刚性约束**，与 Experience.md（软性经验、系数调节）不同：以下规则不可违反。
+> 分析、建议、分单方案均须逐条校验；一旦触碰即为**违规**，必须显式提示并给出修正方案。
+
+## 供应商分单任务
+
+- 【份额上限】单个供应商在同一物流仓的承接份额**不得超过 40%**，超过即为违规，须拆分给其他供应商。
+- 【最少供应商数】单仓分单**至少引入 2 家**供应商，避免单点依赖导致停供风险。
+- 【新供应商限额】首次合作的供应商，单仓首轮承接**不超过 10 人**，通过磨合期后方可扩量。
+- 【临界量约束】分配给某供应商的人数**不得超过其画像表中的临界量**，超出部分视为不可交付。
+- 【低置信度收紧】供应商区间宽度pp **> 8** 时，其承接份额**不得超过 25%**（置信度不足，需压低暴露）。
+
+## 用工保障任务
+
+- 【合理浮动区间】用工需求量的合理浮动为**理论计算结果的上下 20%**（即 [计算值×0.8, 计算值×1.2]）；超出此区间的用工建议必须给出额外理由。
+- 【供给率红线】供给率**低于 0.85** 的供应商不得作为该仓主力承接方（份额不得居首）。
+- 【离职率红线】离职率**高于 15%** 的供应商不得承接连续性要求高的岗位（如夜班、长周期驻场）。
+- 【到岗时限】到岗天数**超过 5 天**的供应商不得用于爬坡期/大促等时效敏感场景。
+- 【考勤门槛】假期与大促覆盖单，承接方考勤率须**≥ 95%**。
+
+## 通用规则
+
+- 【数据真实性】所有结论必须基于 Suppliers.md 表内真实数值，**禁止编造**；无数据时如实说明缺失。
+- 【冲突优先级】Rule.md 与 Experience.md 冲突时，**以 Rule.md 为准**（硬性规则优先于软性经验）。
+`;
+
+/**
+ * 幂等写入 PO workspace 的 Rule.md 预置文件。
+ *
+ * - 目标路径固定为 `~/.openclaw/workspace-po/Rule.md`（由 createAgent 保证 workspace 已存在）。
+ * - 文件已存在则跳过，避免覆盖用户改动。
+ */
+async function ensurePresetPoRuleFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
+  const target = join(workspace, PRESET_PO_RULE_FILE);
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(workspace);
+  await writeFile(target, PRESET_PO_RULE_CONTENT, 'utf8');
+  logger.info('Provisioned preset PO rule file', { path: target });
+}
+
 /** PO 用工决策登记 skill 的 slug（写入 workspace 的 skills/<slug>/SKILL.md）。 */
 const PRESET_PO_DECISION_SKILL_SLUG = 'po-decision-logging';
 
@@ -918,6 +970,31 @@ async function ensurePresetPoDecisionFile(): Promise<void> {
   logger.info('Provisioned preset PO decision seed file', { path: target });
 }
 
+/** PO 日记看板数据文件名(与 PoDiaryCalendar 运行时读写路径一致)。 */
+const PRESET_PO_DIARY_FILE = 'PO日记.json';
+/** 空文档种子:日记是用户在界面上录入的数据,预置只负责把文件创建出来。 */
+const PRESET_PO_DIARY_SEED_CONTENT = `${JSON.stringify({ entries: [] }, null, 2)}\n`;
+
+/**
+ * 幂等创建 PO workspace 的日记数据文件(PO日记.json)。
+ *
+ * - 目标 `~/.openclaw/workspace-po/PO日记.json`;已存在则跳过,绝不覆盖用户录入的条目。
+ * - 与用工决策/供应商画像不同,该文件**没有 TS 真源也没有生成脚本**:它是看板上
+ *   「+ 新增条目」表单经 host-api files.writeText 直接写入的可写运行时数据。
+ * - 预置的必要性:files-api 的 writeText 对不存在的文件返回 notFound(不会自动创建),
+ *   因此必须在启动阶段先把空文档落盘,否则首次新增会失败。
+ */
+async function ensurePresetPoDiaryFile(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
+  const target = join(workspace, PRESET_PO_DIARY_FILE);
+  if (await fileExists(target)) {
+    return;
+  }
+  await ensureDir(workspace);
+  await writeFile(target, PRESET_PO_DIARY_SEED_CONTENT, 'utf8');
+  logger.info('Provisioned preset PO diary file', { path: target });
+}
+
 /** 供应商画像看板数据文件名(与 SupplierPortraitDashboard 运行时读取路径一致)。 */
 const PRESET_PO_PORTRAIT_FILE = '供应商画像.json';
 const PRESET_PO_PORTRAIT_SEED_CONTENT = `${JSON.stringify(portraitSeed, null, 2)}\n`;
@@ -945,7 +1022,7 @@ async function ensurePresetPoPortraitFile(): Promise<void> {
 const PRESET_PO_DASHBOARD_SKILL_SLUG = 'po-dashboard-analysis';
 const PRESET_PO_DASHBOARD_SKILL_CONTENT = `---
 name: po-dashboard-analysis
-description: 通读供应商画像权威表,以单个物流仓为维度逐仓评估「用工保障」与「供应商分单」的建议与风险。看板分析触发/画像刷新时会以固定提示词调用本 skill。
+description: 通读供应商画像权威表并结合 Rule.md 硬性业务规则,以单个物流仓为维度逐仓评估「用工保障」与「供应商分单」的建议、规则校验结论与风险。看板分析触发/画像刷新时会以固定提示词调用本 skill。
 ---
 
 # 供应商画像看板分析
@@ -954,7 +1031,23 @@ description: 通读供应商画像权威表,以单个物流仓为维度逐仓评
 
 ## 数据来源
 
-调用 \`read_file\` 读取 workspace 根目录的 \`Suppliers.md\`(供应商画像权威表)。该文件按物流仓分节(标题形如 \`## X物流仓（覆盖 a–b）\`),每节是一张 markdown 表格。**所有分析必须基于表内真实数值,不得编造;无对应数据时如实说明。**
+依次读取 workspace 根目录的两个文件（均用 read_file）：
+
+1. **Suppliers.md**（供应商画像权威表）：按物流仓分节,每节一张 markdown 表格。**所有分析必须基于表内真实数值,不得编造;无对应数据时如实说明。**
+2. **Rule.md**（用工业务硬性规则集）：份额上限、浮动区间等刚性约束。**必须先读 Rule.md 再出结论。**
+
+> 本 skill 只读 Rule.md,**不读 Experience.md**。Rule.md 是不可违反的硬性规则。
+
+## 规则校验(强制)
+
+给出每条建议前,必须用 Rule.md 逐条校验,重点包括:
+
+- 单个供应商份额是否超过规则上限(如单仓不超过 40%)
+- 用工数是否落在规则允许的合理浮动区间内(如理论计算结果的上下 20%)
+- 是否触碰供给率 / 离职率 / 到岗天数 / 考勤率等红线
+- 是否超过供应商临界量、是否满足最少供应商家数
+
+**一旦方案触碰某条规则,必须显式指出违反了 Rule.md 中的哪一条,并给出修正后的合规方案。** Rule.md 与软性经验冲突时以 Rule.md 为准。
 
 ## 分析维度(逐仓)
 
@@ -979,6 +1072,7 @@ description: 通读供应商画像权威表,以单个物流仓为维度逐仓评
 - **用工保障建议**:一到两条可执行建议
 - **供应商分单建议**:一到两条可执行建议
 - **风险提示**:该仓需重点关注的风险(供给缺口 / 稳定性 / 成本 / 置信度等)
+- **规则校验**:对照 Rule.md 的结论——合规则说明已满足哪些关键约束;触线则指出违反的具体条目及修正方案
 
 保持简洁,聚焦决策价值,不要整段回抄原始表格。
 `;
@@ -1017,18 +1111,22 @@ export async function ensurePresetPoAgent(): Promise<{ created: boolean }> {
     if (existingIds.includes(PRESET_PO_AGENT_ID)) {
       // PO 已存在：仍幂等确保各预置文件存在（覆盖老环境升级场景）。
       await ensurePresetPoExperienceFile();
+      await ensurePresetPoRuleFile();
       await ensurePresetPoDecisionSkillFile();
       await ensurePresetPoDashboardSkillFile();
       await ensurePresetPoDecisionFile();
       await ensurePresetPoPortraitFile();
+      await ensurePresetPoDiaryFile();
       return { created: false };
     }
     await createAgent(PRESET_PO_AGENT_NAME, { inheritWorkspace: true });
     await ensurePresetPoExperienceFile();
+    await ensurePresetPoRuleFile();
     await ensurePresetPoDecisionSkillFile();
     await ensurePresetPoDashboardSkillFile();
     await ensurePresetPoDecisionFile();
     await ensurePresetPoPortraitFile();
+    await ensurePresetPoDiaryFile();
     logger.info('Provisioned preset PO agent', { agentId: PRESET_PO_AGENT_ID });
     return { created: true };
   } catch (error) {
