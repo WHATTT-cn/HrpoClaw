@@ -34,6 +34,7 @@ import { ChatInput, type ChatWorkspaceOption, type FileAttachment } from './Chat
 import { ChatToolbar } from './ChatToolbar';
 import { AcpTimeline } from './AcpTimeline';
 import { AcpErrorBanner } from './AcpErrorBanner';
+import { RegionHealthDashboard } from './RegionHealthDashboard';
 import { SupplierPortraitDashboard } from './SupplierPortraitDashboard';
 import { SupplierDecisionDashboard } from './SupplierDecisionDashboard';
 import { isPoDashboardSessionKey, usePoDashboardAnalysisStore } from '@/stores/po-dashboard-analysis';
@@ -52,16 +53,17 @@ const PO_DASHBOARD_ANALYSIS_PROMPT = [
 /** PO agent 右半区对话列的两种视图。 */
 type PoRightTab = 'chat' | 'dashboard';
 
-type PoDashboardTab = 'portrait' | 'decision';
+type PoDashboardTab = 'region' | 'portrait' | 'decision';
 
 /**
- * PO agent 左侧看板面板：画像看板（只读）/ 决策看板（可写）双 Tab 切换（方案 A）。
- * 两个看板互不替换，用户可自由在两者间切换。
+ * PO agent 左侧看板面板：区域健康（跨仓聚合）/ 画像看板（只读）/ 决策看板（可写）三 Tab 切换。
+ * 三个看板互不替换，用户可自由切换；默认落在「区域健康」。
  */
 function PoDashboardPanel() {
-  const [tab, setTab] = useState<PoDashboardTab>('portrait');
+  const [tab, setTab] = useState<PoDashboardTab>('region');
   const tabs: { key: PoDashboardTab; label: string }[] = [
-    { key: 'portrait', label: '供应商画像' },
+    { key: 'region', label: '区域健康' },
+    { key: 'portrait', label: '采购下单' },
     { key: 'decision', label: '履约追踪' },
   ];
   return (
@@ -84,7 +86,13 @@ function PoDashboardPanel() {
         ))}
       </div>
       <div className="min-h-0 flex-1">
-        {tab === 'portrait' ? <SupplierPortraitDashboard /> : <SupplierDecisionDashboard />}
+        {tab === 'region' ? (
+          <RegionHealthDashboard />
+        ) : tab === 'portrait' ? (
+          <SupplierPortraitDashboard />
+        ) : (
+          <SupplierDecisionDashboard />
+        )}
       </div>
     </div>
   );

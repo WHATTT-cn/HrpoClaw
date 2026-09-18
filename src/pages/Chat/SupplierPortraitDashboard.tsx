@@ -58,6 +58,11 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+/** 数值格式化：null / undefined / 非数字统一显示为「—」，避免真源缺值时看板崩溃。 */
+function num(v: number | null | undefined, digits: number): string {
+  return typeof v === 'number' && Number.isFinite(v) ? v.toFixed(digits) : '—';
+}
+
 /** 单行数据块：统一圆角矩形风格。 */
 function RowCard({ 行 }: { 行: 画像行 }) {
   const 是基准 = 行.档级 === '④基准';
@@ -70,7 +75,7 @@ function RowCard({ 行 }: { 行: 画像行 }) {
           : 'border-black/5 bg-black/[0.02] dark:border-white/5 dark:bg-white/[0.02]',
       )}
     >
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <span className="rounded-md bg-black/5 px-1.5 py-0.5 text-[11px] font-medium text-foreground/80 dark:bg-white/10">
           {行.档级}
         </span>
@@ -79,20 +84,21 @@ function RowCard({ 行 }: { 行: 画像行 }) {
         </span>
         <span className="text-xs text-muted-foreground">· {行.工种}</span>
         <span className="text-xs text-muted-foreground">· {行.班次}</span>
+        <span className="text-xs text-muted-foreground">· 技能{行.技能等级}</span>
         <span className="rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-400">
           {行.用工性质}
         </span>
       </div>
       <div className="grid grid-cols-3 gap-x-3 gap-y-2">
-        <Metric label="价格 $/(人·天)" value={行.价格.toFixed(1)} />
-        <Metric label="供给率" value={行.供给率.toFixed(3)} />
-        <Metric label="到岗天数" value={行.到岗天数.toFixed(1)} />
-        <Metric label="考勤率" value={行.考勤率.toFixed(3)} />
-        <Metric label="离职率" value={行.离职率.toFixed(3)} />
-        <Metric label="人效" value={行.人效} />
-        <Metric label="区间宽度pp" value={行.区间宽度pp.toFixed(1)} />
-        <Metric label="样本人数" value={行.样本人数} />
-        <Metric label="临界量" value={行.临界量 ?? '—'} />
+        <Metric label="价格 $/(人·天)" value={num(行.价格, 1)} />
+        <Metric label="供给率" value={num(行.供给率, 3)} />
+        <Metric label="到岗天数" value={num(行.到岗天数, 1)} />
+        <Metric label="考勤率" value={num(行.考勤率, 3)} />
+        <Metric label="离职率" value={num(行.离职率, 3)} />
+        <Metric label="人效" value={num(行.人效, 2)} />
+        <Metric label="置信度" value={行.置信度 ?? '—'} />
+        <Metric label="历史最大供给量" value={行.历史最大供给量 ?? '—'} />
+        <Metric label="样本人数" value={行.样本人数 ?? '—'} />
       </div>
     </div>
   );
@@ -157,7 +163,7 @@ export function SupplierPortraitDashboard() {
       <div className="shrink-0 border-b border-black/5 px-4 py-3 dark:border-white/5">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            供应商画像看板
+            采购下单看板
           </h2>
           <button
             type="button"
