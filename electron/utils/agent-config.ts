@@ -14,6 +14,10 @@ import {
 } from './openclaw-compaction';
 import portraitSeed from '@shared/po-supplier-portrait.json';
 import decisionSeed from '@shared/po-supplier-decisions.json';
+import v6RegionSeed from '@shared/po-v6-region.json';
+import v6RegionAtomsSeed from '@shared/po-v6-region-atoms.json';
+import v6PurchaseSeed from '@shared/po-v6-purchase.json';
+import v6FulfillmentSeed from '@shared/po-v6-fulfillment.json';
 
 const MAIN_AGENT_ID = 'main';
 const MAIN_AGENT_NAME = 'Main Agent';
@@ -1020,6 +1024,41 @@ async function ensurePresetPoPortraitFile(): Promise<void> {
   logger.info('Provisioned preset PO portrait seed file', { path: target });
 }
 
+/**
+ * V6 看板数据文件清单(文件名与各看板组件运行时读取路径、gen-v6-boards.mjs 写入路径三方一致)。
+ *
+ * - `compact: true` 表示纯机读的原子量产物,与 gen 脚本一致采用紧凑 JSON(省约 40% 体积);
+ *   其余产物保留 2 空格缩进,便于 Agent 直接读取与人工排查。
+ * - 种子来自 `@shared/po-v6-*.json`,由 gen-v6-boards.mjs 从 TS 真源一次派生(同源双写)。
+ */
+const PRESET_PO_V6_FILES: ReadonlyArray<{ file: string; seed: unknown; compact: boolean }> = [
+  { file: '区域健康.json', seed: v6RegionSeed, compact: false },
+  { file: '区域健康原子量.json', seed: v6RegionAtomsSeed, compact: true },
+  { file: '采购下单.json', seed: v6PurchaseSeed, compact: false },
+  { file: '履约追踪.json', seed: v6FulfillmentSeed, compact: false },
+];
+
+/**
+ * 幂等写入 PO workspace 的 V6 看板种子数据(区域健康 / 区域健康原子量 / 采购下单 / 履约追踪)。
+ *
+ * - 逐个文件判存,已存在则跳过,绝不覆盖用户现场数据。
+ * - 语义与画像预置一致:预置=首次兜底,刷新=重跑 `pnpm gen:v6` 覆盖 workspace json。
+ * - 序列化放在缺失分支内惰性执行,避免应用启动时无谓地把近 1MB 种子转成字符串。
+ */
+async function ensurePresetPoV6Files(): Promise<void> {
+  const workspace = expandPath(`~/.openclaw/workspace-${PRESET_PO_AGENT_ID}`);
+  for (const { file, seed, compact } of PRESET_PO_V6_FILES) {
+    const target = join(workspace, file);
+    if (await fileExists(target)) {
+      continue;
+    }
+    await ensureDir(workspace);
+    const content = compact ? `${JSON.stringify(seed)}\n` : `${JSON.stringify(seed, null, 2)}\n`;
+    await writeFile(target, content, 'utf8');
+    logger.info('Provisioned preset PO V6 board file', { path: target });
+  }
+}
+
 /** PO 看板分析 skill 的 slug(写入 workspace 的 skills/<slug>/SKILL.md)。 */
 const PRESET_PO_DASHBOARD_SKILL_SLUG = 'po-dashboard-analysis';
 const PRESET_PO_DASHBOARD_SKILL_CONTENT = `---
@@ -1120,6 +1159,7 @@ export async function ensurePresetPoAgent(): Promise<{ created: boolean }> {
       await ensurePresetPoDashboardSkillFile();
       await ensurePresetPoDecisionFile();
       await ensurePresetPoPortraitFile();
+      await ensurePresetPoV6Files();
       await ensurePresetPoDiaryFile();
       return { created: false };
     }
@@ -1130,6 +1170,7 @@ export async function ensurePresetPoAgent(): Promise<{ created: boolean }> {
     await ensurePresetPoDashboardSkillFile();
     await ensurePresetPoDecisionFile();
     await ensurePresetPoPortraitFile();
+    await ensurePresetPoV6Files();
     await ensurePresetPoDiaryFile();
     logger.info('Provisioned preset PO agent', { agentId: PRESET_PO_AGENT_ID });
     return { created: true };

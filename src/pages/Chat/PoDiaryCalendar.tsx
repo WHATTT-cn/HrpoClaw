@@ -1,16 +1,25 @@
 /**
- * PO 日记日历板块（履约追踪看板顶部）
+ * PO 日记日历板块（履约追踪看板主体）
  *
- * 与同一看板下方的「用工决策」记录不同，PO 日记是**可写运行时数据**：
- * - 数据文件 `~/.openclaw/workspace-po/PO日记.json`，由主进程 ensurePresetPoDiaryFile() 预置空文档；
+ * 本组件同时承载**两类来源完全隔离**的数据：
+ *
+ * 一、可写日记条目（`~/.openclaw/workspace-po/PO日记.json`）
+ * - 由主进程 ensurePresetPoDiaryFile() 预置空文档；
  * - 唯一写入方就是本组件的「+」新增表单与条目删除，经 host-api 的 files.writeText 落盘；
- * - 没有 TS 真源、没有生成脚本，因此不会被 `pnpm gen:decisions` 覆盖。
+ * - 没有 TS 真源、没有生成脚本，因此不会被任何 gen 脚本覆盖。
+ *
+ * 二、★只读入职事件（V6 板块四，经 `externalEvents` 传入）
+ * - 由 `履约追踪.json` 主表派生，是 TS 真源 → `pnpm gen:v6` 的产物；
+ * - **绝不进入 `entries` 状态、绝不进入 `persist()` 写链路**，因此新增/删除日记不会覆盖它；
+ * - 视觉上以第三配色（天蓝）+「派生」角标 + 无删除按钮与可写条目区分；
+ * - `externalEvents` 不传时，本组件行为与 V6 改造前完全一致（向后兼容）。
  *
  * 结构：
  * - 头部：年/月选择 + 上/下月翻页 + 刷新 + 「+」新增按钮。
- * - 月视图：7 列网格；一条条目在**下单日期**格标「下单」、在**预期送达日期**格标「预期送达」。
- * - 明细：点击单元格在下方展开当天标记明细，每条附删除按钮（删除的是整条条目）。
- * - 未排期：两个日期都留空（或非法）的条目集中列在日历下方。
+ * - 月视图：7 列网格；日记条目在**下单日期**格标「下单」、在**预期送达日期**格标「预期送达」，
+ *   入职事件在**入职日期**格标「入职」。
+ * - 明细：点击单元格在下方展开当天明细 —— 可写条目附删除按钮，入职事件只读。
+ * - 未排期：两个日期都留空（或非法）的日记条目集中列在日历下方（不含入职事件，它必有日期）。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus, RefreshCw, Trash2 } from 'lucide-react';
@@ -20,15 +29,18 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { pct } from './board-format';
 import {
   MARKER_LABEL,
   PO_DIARY_FILE_PATH,
   createEmptyDraft,
   createEntryId,
   groupMarkersByDate,
+  groupOnboardingByDate,
   parseDiaryEntries,
   serializeDiary,
   toDateKey,
+  type OnboardingEvent,
   type PoDiaryDraft,
   type PoDiaryEntry,
   type PoDiaryMarkerKind,
@@ -48,10 +60,16 @@ const TEXT_FIELDS: Array<{ key: keyof PoDiaryDraft; label: string; placeholder: 
   { key: 'expectedHeadcount', label: '预期送达人数', placeholder: '如：12' },
 ];
 
-/** 标记类型对应的徽标配色：下单用琥珀色，预期送达用绿色。 */
+/**
+ * 标记类型对应的徽标配色。
+ * - 前两个是**可写**日记标记：下单用琥珀色，预期送达用绿色；
+ * - `onboarding` 是**只读派生**事件（V6 板块四），独占天蓝色，
+ *   与可写标记在色系上一眼可辨（方案 §9.5.3「视觉区分」）。
+ */
 const MARKER_TONE: Record<PoDiaryMarkerKind, string> = {
   order: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   delivery: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  onboarding: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
 };
 
 /**
@@ -127,7 +145,57 @@ function DiaryEntryCard({
   );
 }
 
-export function PoDiaryCalendar() {
+/**
+ * ★只读入职事件卡片（V6 板块四派生）
+ *
+ * 与 `DiaryEntryCard` 的三点刻意差异，对应方案 §9.5.3「视觉区分」：
+ * 1. 天蓝色徽标（`MARKER_TONE.onboarding`），与可写标记的琥珀/绿色分属不同色系；
+ * 2. 右上角「派生」角标，明示数据来自 `履约追踪.json` 而非手工录入；
+ * 3. **不渲染删除按钮** —— 结构上就不存在删除入口，用户无从误删。
+ *
+ * 留存率显示口径（方案 §9.5.3「窗口未满」）：
+ * 入职日 + 30/90 天若尚未到达今天，窗口未满，此时产物里的留存率是「截至今日」的中间值，
+ * 直接显示会被误读为最终结果，因此改显「追踪中」；窗口已满才显示百分比。
+ * 无论哪种情况，**前端都不重算留存率**，只做展示层拦截。
+ */
+function OnboardingEventCard({ event }: { event: OnboardingEvent }) {
+  return (
+    <div
+      data-testid="po-diary-onboarding"
+      className="rounded-lg border border-sky-500/20 bg-sky-500/[0.04] px-3 py-2 dark:border-sky-400/20"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${MARKER_TONE.onboarding}`}>
+          {MARKER_LABEL.onboarding}
+        </span>
+        <span className="text-[11px] text-muted-foreground tabular-nums">{event.dateKey}</span>
+        <span className="rounded-md bg-black/5 px-1.5 py-0.5 text-[10px] text-muted-foreground dark:bg-white/10">
+          派生
+        </span>
+      </div>
+      <p className="mt-1 truncate text-xs text-foreground/80">
+        {event.物流仓} · {event.供应商} · 入职 {event.入职总人数} 人
+      </p>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground tabular-nums">
+        <span>
+          30天留存 {event.追踪中30 ? '追踪中' : `${event['30天留存人数']} 人 / ${pct(event['30天留存率'])}`}
+        </span>
+        <span>
+          90天留存 {event.追踪中90 ? '追踪中' : `${event['90天留存人数']} 人 / ${pct(event['90天留存率'])}`}
+        </span>
+      </div>
+      {event.明细 && (
+        <p className="mt-1 break-words text-[11px] leading-relaxed text-muted-foreground">{event.明细}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * @param externalEvents ★只读入职事件。不传（undefined）时组件行为与 V6 改造前完全一致，
+ *   这是方案 §9.5.4 的向后兼容验收项，也是回滚开关：父组件不传即退回原状。
+ */
+export function PoDiaryCalendar({ externalEvents }: { externalEvents?: OnboardingEvent[] } = {}) {
   const today = useMemo(() => new Date(), []);
   const [entries, setEntries] = useState<PoDiaryEntry[]>([]);
   const [viewYear, setViewYear] = useState(() => today.getFullYear());
@@ -168,6 +236,16 @@ export function PoDiaryCalendar() {
 
   /** 日期 → 标记列表；同一条目会同时出现在下单日与预期送达日两格。 */
   const markersByDate = useMemo(() => groupMarkersByDate(entries), [entries]);
+  /**
+   * ★日期 → 只读入职事件列表。
+   * 刻意与上面的 `markersByDate` 分成**两个独立 Map**，而不是把入职事件塞进 markers：
+   * 这样 `persist()` 回写时序列化的永远只有 `entries`，入职事件在数据结构层面就进不了写链路
+   * （方案 §9.5.3「读写隔离」）。
+   */
+  const onboardingByDate = useMemo(
+    () => groupOnboardingByDate(externalEvents ?? []),
+    [externalEvents],
+  );
   /** 两个日期都没填的条目，单独列出，避免录入后「找不到」。 */
   const unscheduled = useMemo(
     () => entries.filter((entry) => !entry.orderDate && !entry.expectedDate),
@@ -273,6 +351,8 @@ export function PoDiaryCalendar() {
   }, [pendingDelete, persist]);
 
   const selectedMarkers = selectedDate ? (markersByDate.get(selectedDate) ?? []) : [];
+  /** 选中日的只读入职事件；与 selectedMarkers 并列展示，但互不影响。 */
+  const selectedOnboarding = selectedDate ? (onboardingByDate.get(selectedDate) ?? []) : [];
 
   return (
     <div
@@ -369,6 +449,21 @@ export function PoDiaryCalendar() {
           }
           const key = toDateKey(new Date(viewYear, viewMonth, day));
           const dayMarkers = markersByDate.get(key) ?? [];
+          const dayOnboarding = onboardingByDate.get(key) ?? [];
+          /**
+           * 格内徽标 = 可写标记 + 只读入职事件，按「可写在前」的顺序拼接。
+           * 只在渲染层拼接成临时数组，两个数据源的状态互不污染。
+           */
+          const dayBadges: Array<{ badgeKey: string; kind: PoDiaryMarkerKind }> = [
+            ...dayMarkers.map((marker) => ({
+              badgeKey: `${marker.entry.id}-${marker.kind}`,
+              kind: marker.kind,
+            })),
+            ...dayOnboarding.map((event) => ({
+              badgeKey: `onboarding-${event.id}`,
+              kind: 'onboarding' as PoDiaryMarkerKind,
+            })),
+          ];
           const isToday = key === todayKey;
           const isSelected = key === selectedDate;
           return (
@@ -392,17 +487,17 @@ export function PoDiaryCalendar() {
                 {day}
               </span>
               <span className="mt-0.5 block space-y-0.5">
-                {dayMarkers.slice(0, 2).map((marker) => (
+                {dayBadges.slice(0, 2).map((badge) => (
                   <span
-                    key={`${marker.entry.id}-${marker.kind}`}
-                    className={`block truncate rounded px-1 py-0.5 text-[10px] leading-tight ${MARKER_TONE[marker.kind]}`}
+                    key={badge.badgeKey}
+                    className={`block truncate rounded px-1 py-0.5 text-[10px] leading-tight ${MARKER_TONE[badge.kind]}`}
                   >
-                    {MARKER_LABEL[marker.kind]}
+                    {MARKER_LABEL[badge.kind]}
                   </span>
                 ))}
-                {dayMarkers.length > 2 && (
+                {dayBadges.length > 2 && (
                   <span className="block px-1 text-[10px] text-muted-foreground">
-                    +{dayMarkers.length - 2}
+                    +{dayBadges.length - 2}
                   </span>
                 )}
               </span>
@@ -415,19 +510,25 @@ export function PoDiaryCalendar() {
       {selectedDate && (
         <div data-testid="po-diary-detail" className="mt-3 space-y-2">
           <p className="text-xs font-medium text-foreground">
-            {selectedDate} 明细（{selectedMarkers.length} 条）
+            {selectedDate} 明细（{selectedMarkers.length + selectedOnboarding.length} 条）
           </p>
-          {selectedMarkers.length === 0 ? (
+          {selectedMarkers.length === 0 && selectedOnboarding.length === 0 ? (
             <p className="text-xs text-muted-foreground">当天暂无条目，可点击右上角「+」新增。</p>
           ) : (
-            selectedMarkers.map((marker) => (
-              <DiaryEntryCard
-                key={`${marker.entry.id}-${marker.kind}`}
-                entry={marker.entry}
-                kind={marker.kind}
-                onDelete={setPendingDelete}
-              />
-            ))
+            <>
+              {selectedMarkers.map((marker) => (
+                <DiaryEntryCard
+                  key={`${marker.entry.id}-${marker.kind}`}
+                  entry={marker.entry}
+                  kind={marker.kind}
+                  onDelete={setPendingDelete}
+                />
+              ))}
+              {/* 只读入职事件排在可写条目之后，无删除入口 */}
+              {selectedOnboarding.map((event) => (
+                <OnboardingEventCard key={event.id} event={event} />
+              ))}
+            </>
           )}
         </div>
       )}

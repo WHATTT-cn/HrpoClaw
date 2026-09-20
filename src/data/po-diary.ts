@@ -50,8 +50,12 @@ export interface PoDiaryDoc {
 /** 条目业务字段（不含 id/createdAt），新增表单的输入模型。 */
 export type PoDiaryDraft = Omit<PoDiaryEntry, 'id' | 'createdAt'>;
 
-/** 日历标记类型：同一条目在下单日与预期送达日各占一格。 */
-export type PoDiaryMarkerKind = 'order' | 'delivery';
+/**
+ * 日历标记类型。
+ * - `order` / `delivery`：可写日记条目，同一条目在下单日与预期送达日各占一格；
+ * - `onboarding`：★V6 板块四派生的**只读**入职事件，不进任何写链路（不可编辑、不可删除）。
+ */
+export type PoDiaryMarkerKind = 'order' | 'delivery' | 'onboarding';
 
 /** 日历某一格上的一个标记。 */
 export interface PoDiaryMarker {
@@ -63,7 +67,39 @@ export interface PoDiaryMarker {
 export const MARKER_LABEL: Record<PoDiaryMarkerKind, string> = {
   order: '下单',
   delivery: '预期送达',
+  onboarding: '入职',
 };
+
+/* ==================== V6 板块四 · 只读入职事件 ==================== */
+
+/**
+ * 日历上的一条只读入职事件（由 `履约跟踪.json` 主表一行派生）。
+ *
+ * ★读写隔离：本类型**绝不**进入 `PoDiaryDoc.entries`，也不参与 `serializeDiary()` / `persist()`，
+ *   它只作为渲染入参（`externalEvents`）传入日历，因此新增/删除日记不会影响它，反之亦然。
+ * ★前端零聚合：留存率直接取主表字段，前端不重算、不跨行加权；
+ *   留存率随批次固定，不随任何筛选变化。
+ */
+export interface OnboardingEvent {
+  /** 事件唯一标识（入职日期|仓|供应商），用作 React key。 */
+  id: string;
+  /** 本地日历格键 `YYYY-MM-DD`。 */
+  dateKey: string;
+  物流仓: string;
+  供应商: string;
+  入职总人数: number;
+  '30天留存人数': number;
+  '90天留存人数': number;
+  /** 直取主表值；窗口未满时按 `追踪中30/90` 标记改为「追踪中」展示，不清零。 */
+  '30天留存率': number | null;
+  '90天留存率': number | null;
+  /** 内联明细串：`工种×班次×性质×技能=人数 ; …`。 */
+  明细: string;
+  /** 入职日 + 30 天 > 今天 → 窗口未满，留存率尚不可判读。 */
+  追踪中30: boolean;
+  /** 入职日 + 90 天 > 今天 → 窗口未满。 */
+  追踪中90: boolean;
+}
 
 /** 空白草稿，供表单初始化与重置共用。 */
 export function createEmptyDraft(orderDate = ''): PoDiaryDraft {
@@ -174,4 +210,87 @@ export function toDateKey(date: Date): string {
   const m = `${date.getMonth() + 1}`.padStart(2, '0');
   const d = `${date.getDate()}`.padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+/** 履约追踪（V6 板块四）派生产物路径，只读；由 `pnpm gen:v6` 与主进程预置共同保证存在。 */
+export const PO_FULFILLMENT_FILE_PATH = '~/.openclaw/workspace-po/履约追踪.json';
+
+/** 产物里入职日期是 `2024-05-01T00:00:00.000` 形式，日历只要本地日期部分。 */
+function toOnboardingDateKey(value: unknown): string {
+  const text = toText(value).slice(0, 10);
+  return isValidDateKey(text) ? text : '';
+}
+
+/** 数值字段容错：非有限数一律回退 fallback，绝不让整块看板因脏数据白屏。 */
+function toFiniteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+/** 比率字段容错：null 是合法业务值（口径未定义），非法值同样归一成 null。 */
+function toRatioOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * 把板块四主表解析成只读入职事件。
+ *
+ * - 日期非法或缺失的行直接丢弃（无法落到日历格，且台账段落已下线，留着也无处展示）；
+ * - `追踪中30/90` 以 `today` 为基准判定：入职日 + N 天 > 今天 即窗口未满，
+ *   此时主表给出的留存率是「截至今天尚未到期」的乐观值，不可直接判读；
+ * - 传入 `today` 而非在函数内取 `new Date()`，是为了让该纯函数可测、结果可复现。
+ */
+export function parseOnboardingEvents(text: string, today: Date): OnboardingEvent[] {
+  try {
+    const doc = JSON.parse(text) as { 主表?: unknown };
+    if (!doc || !Array.isArray(doc.主表)) return [];
+    const 今日零点 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const 一天 = 24 * 60 * 60 * 1000;
+    const events: OnboardingEvent[] = [];
+    for (const raw of doc.主表 as Record<string, unknown>[]) {
+      if (!raw || typeof raw !== 'object') continue;
+      const dateKey = toOnboardingDateKey(raw.入职日期);
+      if (!dateKey) continue;
+      const [y, m, d] = dateKey.split('-').map(Number);
+      const 入职时刻 = new Date(y, m - 1, d).getTime();
+      const 物流仓 = toText(raw.物流仓) || '未知';
+      const 供应商 = toText(raw.供应商) || '未知';
+      events.push({
+        id: `${dateKey}|${物流仓}|${供应商}`,
+        dateKey,
+        物流仓,
+        供应商,
+        入职总人数: toFiniteNumber(raw.入职总人数, 0),
+        '30天留存人数': toFiniteNumber(raw['30天留存人数'], 0),
+        '90天留存人数': toFiniteNumber(raw['90天留存人数'], 0),
+        '30天留存率': toRatioOrNull(raw['30天留存率']),
+        '90天留存率': toRatioOrNull(raw['90天留存率']),
+        明细: toText(raw.明细),
+        追踪中30: 入职时刻 + 30 * 一天 > 今日零点,
+        追踪中90: 入职时刻 + 90 * 一天 > 今日零点,
+      });
+    }
+    return events;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 把入职事件展开成「日期 → 事件列表」。
+ *
+ * 独立于 `groupMarkersByDate()` 存在，而不是并进同一个 Map —— 这是读写隔离的结构保证：
+ * 可写日记与只读派生事件在数据结构层面就不共用容器，渲染时才并列显示。
+ * 同日多条按人数降序，让采购一眼看到当天的主要来源。
+ */
+export function groupOnboardingByDate(events: OnboardingEvent[]): Map<string, OnboardingEvent[]> {
+  const map = new Map<string, OnboardingEvent[]>();
+  for (const e of events) {
+    const bucket = map.get(e.dateKey);
+    if (bucket) bucket.push(e);
+    else map.set(e.dateKey, [e]);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => b.入职总人数 - a.入职总人数);
+  }
+  return map;
 }
