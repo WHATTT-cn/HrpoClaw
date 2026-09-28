@@ -32,6 +32,7 @@ import {
   type OnboardingEvent,
 } from '@/data/po-diary';
 import { PoDiaryCalendar } from './PoDiaryCalendar';
+import { usePoDashboardAnalysisStore } from '@/stores/po-dashboard-analysis';
 import v6FulfillmentSeed from '@shared/po-v6-fulfillment.json';
 
 export function SupplierDecisionDashboard() {
@@ -89,6 +90,28 @@ export function SupplierDecisionDashboard() {
     [events],
   );
 
+  /* ---------- 筛选上下文上报（供 agent 分析会话拼提示词） ---------- */
+
+  const setBoardContext = usePoDashboardAnalysisStore((s) => s.setBoardContext);
+  const requestPoDashboardRefresh = usePoDashboardAnalysisStore((s) => s.requestRefresh);
+
+  // 履约看板不提供筛选 UI（全量台账），上报的是数据规模与来源，供 skill 核对基数。
+  const 看板上下文 = useMemo(
+    () =>
+      [
+        '统计范围：全量入职台账（无筛选）',
+        `入职事件：${events.length} 条`,
+        `Σ入职总人数：${总入职人数} 人`,
+        `数据来源：${fallback ? '内置快照（workspace 文件缺失）' : 'workspace 履约追踪.json'}`,
+      ].join('；'),
+    [events.length, 总入职人数, fallback],
+  );
+
+  // mount 后立即上报一次：boardContexts 非持久化，刷新页面后为 null。
+  useEffect(() => {
+    setBoardContext('decision', 看板上下文);
+  }, [看板上下文, setBoardContext]);
+
   return (
     <div data-testid="supplier-decision-dashboard" className="flex h-full min-h-0 flex-col">
       {/* 顶部：标题 + 刷新 */}
@@ -98,7 +121,10 @@ export function SupplierDecisionDashboard() {
         </h2>
         <button
           type="button"
-          onClick={() => void load()}
+          onClick={() => {
+            requestPoDashboardRefresh('decision');
+            void load();
+          }}
           disabled={loading}
           className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-black/5 disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/10"
         >

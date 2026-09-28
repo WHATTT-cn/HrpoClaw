@@ -43,6 +43,7 @@ import {
   聚合板块一,
   聚合板块二,
 } from '@/data/v6-board-table';
+import { usePoDashboardAnalysisStore } from '@/stores/po-dashboard-analysis';
 
 /** 原子量数据文件路径（与 agent-config 预置种子、gen-v6-boards 写入路径一致）。 */
 const ATOMS_FILE_PATH = '~/.openclaw/workspace-po/区域健康原子量.json';
@@ -429,6 +430,38 @@ export function RegionHealthDashboard() {
     [周期, 聚合仓, doc.源],
   );
 
+  /* ---------- 筛选上下文上报（供 agent 分析会话拼提示词） ---------- */
+
+  const setBoardContext = usePoDashboardAnalysisStore((s) => s.setBoardContext);
+  const requestPoDashboardRefresh = usePoDashboardAnalysisStore((s) => s.requestRefresh);
+
+  /**
+   * 预渲染摘要串：全选时写「全部」，多选超过 6 项时截断，避免提示词被长名单淹没。
+   * 必须用 useMemo 稳定引用，否则每次渲染新建字符串会反复触发上报 effect。
+   */
+  const 筛选摘要 = useMemo(() => {
+    const 段 = (名: string, 生效: string[], 全集: string[]) => {
+      if (全集.length === 0) return `${名}：无`;
+      if (生效.length === 全集.length) return `${名}：全部（共 ${全集.length} 个）`;
+      if (生效.length > 6) return `${名}：${生效.slice(0, 6).join('、')} 等 ${生效.length} 个`;
+      return `${名}：${生效.join('、')}`;
+    };
+    const 周期段 = 周期.周期档
+      ? `统计周期：${周期.起} ~ ${周期.止}（命中预设档「${周期.周期档}」，人头已精确去重）`
+      : `统计周期：${周期.起} ~ ${周期.止}（自定义区间，人头类指标为 Σ 上界近似）`;
+    return [
+      段('洲际', 生效洲际, 洲际选项),
+      段('片区', 生效片区, 片区选项),
+      段('物流仓', 生效仓, 仓选项),
+      周期段,
+    ].join('；');
+  }, [生效洲际, 洲际选项, 生效片区, 片区选项, 生效仓, 仓选项, 周期]);
+
+  // mount 后立即上报一次：boardContexts 非持久化，刷新页面后为 null。
+  useEffect(() => {
+    setBoardContext('region', 筛选摘要);
+  }, [筛选摘要, setBoardContext]);
+
   const 人头近似 = 板块一.人头近似;
   const 人头提示 = 人头近似 ? '自定义月区间无法跨月精确去重，人头类指标按 Σ 上界近似' : undefined;
   const 峰值提示 = 板块一.峰值近似 ? '多仓合并时历史最大供给量为 Σ 上界（≤ 真值）' : undefined;
@@ -445,7 +478,10 @@ export function RegionHealthDashboard() {
           </h2>
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => {
+              requestPoDashboardRefresh('region');
+              void load();
+            }}
             disabled={loading}
             className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-black/5 disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/10"
           >

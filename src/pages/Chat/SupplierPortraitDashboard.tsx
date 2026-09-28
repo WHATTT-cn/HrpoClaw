@@ -414,6 +414,27 @@ export function SupplierPortraitDashboard() {
 
   const 可见行数 = 条件组列表.reduce((s, g) => s + g.行组.length, 0);
 
+  /* ---------- 筛选上下文上报（供 agent 分析会话拼提示词） ---------- */
+
+  const setBoardContext = usePoDashboardAnalysisStore((s) => s.setBoardContext);
+
+  const 看板上下文 = useMemo(
+    () =>
+      [
+        `周期档：${生效周期 || '无'}`,
+        `物流仓：${生效仓 || '无'}`,
+        `需求量桶：${生效桶 || '无'}`,
+        `指标维度：${维度 === 维度全选 ? '所有维度' : 维度}`,
+        `可见条件组：${条件组列表.length} 组 / ${可见行数} 条供应商记录`,
+      ].join('；'),
+    [生效周期, 生效仓, 生效桶, 维度, 条件组列表.length, 可见行数],
+  );
+
+  // mount 后立即上报一次：boardContexts 非持久化，刷新页面后为 null。
+  useEffect(() => {
+    setBoardContext('portrait', 看板上下文);
+  }, [看板上下文, setBoardContext]);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 顶部：三个单选筛选器 + 刷新 */}
@@ -425,7 +446,7 @@ export function SupplierPortraitDashboard() {
           <button
             type="button"
             onClick={() => {
-              requestPoDashboardRefresh();
+              requestPoDashboardRefresh('portrait');
               void load();
             }}
             disabled={loading}

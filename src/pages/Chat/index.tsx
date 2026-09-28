@@ -37,34 +37,77 @@ import { AcpErrorBanner } from './AcpErrorBanner';
 import { RegionHealthDashboard } from './RegionHealthDashboard';
 import { SupplierPortraitDashboard } from './SupplierPortraitDashboard';
 import { SupplierDecisionDashboard } from './SupplierDecisionDashboard';
-import { isPoDashboardSessionKey, usePoDashboardAnalysisStore } from '@/stores/po-dashboard-analysis';
+import {
+  isPoDashboardSessionKey,
+  parsePoDashboardSessionKey,
+  usePoDashboardAnalysisStore,
+  PO_BOARD_KINDS,
+  type PoBoardKind,
+} from '@/stores/po-dashboard-analysis';
 
 const PRESET_PO_AGENT_ID = 'po';
 
-/** PO 看板分析 Tab 的固定触发提示词（对用户隐藏，切 Tab/刷新时自动发送以触发 po-dashboard-analysis skill）。 */
-const PO_DASHBOARD_ANALYSIS_PROMPT = [
-  '请调用 po-dashboard-analysis 技能，阅读工作区根目录下的 Suppliers.md 与 Rule.md，',
-  '以单个物流仓为维度（按「## X物流仓」分节）逐仓分析，',
-  '针对「用工保障」和「供应商分单」两项任务，分别给出建议与风险提示，',
-  '并对照 Rule.md 的硬性规则给出规则校验结论（触线须指出违反的具体条目及修正方案）。',
-  '不要回抄原始表格数据。',
-].join('');
+/** 三看板的中文名（用于空态提示与刷新引导文案）。 */
+const PO_BOARD_LABELS: Record<PoBoardKind, string> = {
+  region: '区域健康',
+  portrait: '采购下单',
+  decision: '履约追踪',
+};
+
+/**
+ * 三看板各自的隐形触发提示词（对用户隐藏，切 Tab / 点刷新时自动发送）。
+ * 一看板一 skill：区域健康 → po-region-health-analysis；采购下单 → po-dashboard-analysis；
+ * 履约追踪 → po-fulfillment-analysis。
+ * context 为看板上报的「当前筛选上下文摘要」（区域健康的洲际/片区/仓/周期），为空时省略。
+ */
+function buildPoDashboardAnalysisPrompt(board: PoBoardKind, context: string | null): string {
+  const scope = context?.trim() ? `当前看板筛选范围：${context.trim()}。` : '';
+  if (board === 'region') {
+    return [
+      '请调用 po-region-health-analysis 技能，阅读工作区的 区域健康.json 与 Rule.md，',
+      scope,
+      '只针对上述筛选范围内的数据，分别给出「供给结构」与「供给质量」两方面的风险提示与改进建议，',
+      '并对照 Rule.md 的硬性规则给出规则校验结论（触线须指出违反的具体条目及修正方案）。',
+      '不要回抄原始表格数据。',
+    ].join('');
+  }
+  if (board === 'decision') {
+    return [
+      '请调用 po-fulfillment-analysis 技能，阅读工作区的 履约追踪.json、采购下单.json 与 Trace.md，',
+      scope,
+      '识别实际入职人数无法满足下单需求（存在缺口）的批次，',
+      '按「距离预期供给时间的剩余天数」分档，逐档给出风险提示与 Trace.md 中对应的补救措施。',
+      '不要回抄原始表格数据。',
+    ].join('');
+  }
+  return [
+    '请调用 po-dashboard-analysis 技能，阅读工作区的 采购下单.json 与 Rule.md，',
+    scope,
+    '以「工种×班次×用工性质×技能等级」的条件组为维度逐组分析各供应商表现，',
+    '针对「用工保障」和「供应商分单」两项任务，分别给出建议与风险提示，',
+    '并对照 Rule.md 的硬性规则给出规则校验结论（触线须指出违反的具体条目及修正方案）。',
+    '不要回抄原始表格数据。',
+  ].join('');
+}
 
 /** PO agent 右半区对话列的两种视图。 */
 type PoRightTab = 'chat' | 'dashboard';
 
-type PoDashboardTab = 'region' | 'portrait' | 'decision';
-
 /**
- * PO agent 左侧看板面板：区域健康（跨仓聚合）/ 画像看板（只读）/ 决策看板（可写）三 Tab 切换。
- * 三个看板互不替换，用户可自由切换；默认落在「区域健康」。
+ * PO agent 左侧看板面板：区域健康（跨仓聚合）/ 采购下单（只读）/ 履约追踪（只读日历）三 Tab 切换。
+ * Tab 状态由 Chat 页托管：一个看板对应一个独立的隐形分析会话，切 Tab 即切会话。
  */
-function PoDashboardPanel() {
-  const [tab, setTab] = useState<PoDashboardTab>('region');
-  const tabs: { key: PoDashboardTab; label: string }[] = [
-    { key: 'region', label: '区域健康' },
-    { key: 'portrait', label: '采购下单' },
-    { key: 'decision', label: '履约追踪' },
+function PoDashboardPanel({
+  tab,
+  onTabChange,
+}: {
+  tab: PoBoardKind;
+  onTabChange: (next: PoBoardKind) => void;
+}) {
+  const tabs: { key: PoBoardKind; label: string }[] = [
+    { key: 'region', label: PO_BOARD_LABELS.region },
+    { key: 'portrait', label: PO_BOARD_LABELS.portrait },
+    { key: 'decision', label: PO_BOARD_LABELS.decision },
   ];
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -73,7 +116,8 @@ function PoDashboardPanel() {
           <button
             key={item.key}
             type="button"
-            onClick={() => setTab(item.key)}
+            data-testid={`po-board-tab-${item.key}`}
+            onClick={() => onTabChange(item.key)}
             className={cn(
               'rounded-t-lg px-3 py-1.5 text-xs font-medium transition-colors',
               tab === item.key
@@ -205,14 +249,17 @@ function AcpEmptyState() {
  * 按当前运行状态区分：分析中 / 失败可重试 / 空闲无输出。
  */
 function PoDashboardAnalysisState({
+  board,
   status,
   errorMessage,
   onRetry,
 }: {
+  board: PoBoardKind;
   status: 'running' | 'error' | 'idle';
   errorMessage?: string | null;
   onRetry: () => void;
 }) {
+  const boardLabel = PO_BOARD_LABELS[board];
   if (status === 'running') {
     return (
       <div
@@ -220,7 +267,7 @@ function PoDashboardAnalysisState({
         className="flex h-[60vh] flex-col items-center justify-center gap-3 text-center"
       >
         <LoadingSpinner size="md" />
-        <p className="text-sm text-muted-foreground">正在分析供应商画像数据，请稍候…</p>
+        <p className="text-sm text-muted-foreground">{`正在分析${boardLabel}看板数据，请稍候…`}</p>
       </div>
     );
   }
@@ -235,7 +282,7 @@ function PoDashboardAnalysisState({
           {errorMessage || '大模型请求超时或失败，未返回分析结果。'}
         </p>
         <p className="max-w-md text-xs text-muted-foreground">
-          可点击左侧画像看板的「刷新」按钮重跑分析。
+          {`可点击左侧「${boardLabel}」看板的「刷新」按钮重跑分析。`}
         </p>
       </div>
     );
@@ -494,23 +541,28 @@ export function Chat() {
     };
   }, [currentSessionKey, loadSessions, sessionDiscoveryAttempted, sessions.length]);
 
-  // PO 看板分析历史会话 key（持久化，null=无历史）。提前到所有引用它的 effect 之前声明，
-  // 以便下方 effect 的依赖数组能安全引用它，避免暂时性死区（TDZ）。
-  const poDashboardSessionKey = usePoDashboardAnalysisStore((s) => s.sessionKey);
+  // PO 三看板分析历史会话 key（持久化，值为 null=该看板无历史）。提前到所有引用它的 effect 之前
+  // 声明，以便下方 effect 的依赖数组能安全引用它，避免暂时性死区（TDZ）。
+  const poDashboardSessionKeys = usePoDashboardAnalysisStore((s) => s.sessionKeys);
+  // 三道拦截的统一豁免量：命中任一看板的已持久化 key 即视为「后端已存在的历史会话」。
+  const isPersistedDashboardHistory = useCallback(
+    (sessionKey: string) =>
+      isPoDashboardSessionKey(sessionKey) &&
+      PO_BOARD_KINDS.some((board) => poDashboardSessionKeys[board] === sessionKey),
+    [poDashboardSessionKeys],
+  );
 
   useEffect(() => {
     if (!currentSessionKey || !cwd || !currentSession?.createdLocally) return;
     // 第三道拦截豁免：已持久化的 dashboard 历史会话不能在此调 prepareLocalSession，
     // 否则会抢占 acpActiveSessionKey 并清空 timeline，使下方加载 effect 的 activeSessionKey
     // 守卫命中而跳过 loadSession，导致「有历史却显示空态」。放行给加载 effect 走 loadSession 回放。
-    const isPersistedDashboardHistory =
-      isPoDashboardSessionKey(currentSessionKey) && currentSessionKey === poDashboardSessionKey;
-    if (isPersistedDashboardHistory) return;
+    if (isPersistedDashboardHistory(currentSessionKey)) return;
     acpLoadInFlightKeyRef.current = null;
     const hasStaleTimeline = acpTimeline.sessionId !== currentSessionKey || acpTimeline.itemOrder.length > 0;
     if (acpActiveSessionKey === currentSessionKey && acpWorkspaceRoot === cwd && acpCwd === cwd && !hasStaleTimeline) return;
     prepareLocalAcpSession({ sessionKey: currentSessionKey, workspaceRoot: cwd, cwd });
-  }, [acpActiveSessionKey, acpCwd, acpTimeline.itemOrder.length, acpTimeline.sessionId, acpWorkspaceRoot, currentSession, currentSessionKey, cwd, poDashboardSessionKey, prepareLocalAcpSession]);
+  }, [acpActiveSessionKey, acpCwd, acpTimeline.itemOrder.length, acpTimeline.sessionId, acpWorkspaceRoot, currentSession, currentSessionKey, cwd, isPersistedDashboardHistory, prepareLocalAcpSession]);
 
   useEffect(() => {
     if (!currentSessionKey || !cwd || !workspaceContextAvailable) return;
@@ -523,12 +575,11 @@ export function Chat() {
     //（隐形会话不进后端侧栏列表，ensureSessionEntry 对新 key 恒打 createdLocally），
     // 但它本质是后端已持久化的会话，必须放行去 loadSession 回放历史 transcript；
     // 否则会因下方 createdLocally 提前 return，导致「有历史却显示尚无分析结果」。
-    const isPersistedDashboardHistory =
-      isPoDashboardSessionKey(currentSessionKey) && currentSessionKey === poDashboardSessionKey;
-    if (currentSession?.createdLocally && !isPersistedDashboardHistory) return;
+    const isPersistedHistory = isPersistedDashboardHistory(currentSessionKey);
+    if (currentSession?.createdLocally && !isPersistedHistory) return;
     // 命中已持久化的 dashboard key 时 createIfMissing=false 走 loadSession 回放历史 transcript，
     // 否则默认 !currentSession 恒为 true 会走 newSession 新建空会话，历史永远显示不出来。
-    const createIfMissing = !currentSession && !isPersistedDashboardHistory;
+    const createIfMissing = !currentSession && !isPersistedHistory;
     acpLoadInFlightKeyRef.current = acpLoadKey;
     if (createIfMissing) selectAcpSession(currentSessionKey, cwd);
     void loadAcpSession({
@@ -545,7 +596,7 @@ export function Chat() {
         acpLoadInFlightKeyRef.current = null;
       }
     });
-  }, [acknowledgeAcpSessionCreated, acpActiveSessionKey, acpCwd, acpWorkspaceRoot, currentSessionKey, cwd, loadAcpSession, poDashboardSessionKey, selectAcpSession, sessionDiscoveryAttempted, sessions, workspaceContextAvailable]);
+  }, [acknowledgeAcpSessionCreated, acpActiveSessionKey, acpCwd, acpWorkspaceRoot, currentSessionKey, cwd, isPersistedDashboardHistory, loadAcpSession, selectAcpSession, sessionDiscoveryAttempted, sessions, workspaceContextAvailable]);
 
   const platform = window.electron?.platform;
   const isMac = platform === 'darwin';
@@ -659,7 +710,7 @@ export function Chat() {
     })();
   }, [acpActiveSessionKey, acpCwd, acpWorkspaceRoot, acknowledgeAcpSessionCreated, cwd, loadAcpSession, scrollToBottom, sendAcpPrompt]);
 
-  // ── PO 看板分析 Tab（阶段四）──────────────────────────────────────────
+  // ── PO 三看板分析 Tab（阶段四 / 第五批横向复制）────────────────────────
   const isPoAgent = currentAgentId === PRESET_PO_AGENT_ID;
   const startPoDashboardSession = usePoDashboardAnalysisStore((s) => s.startNewSession);
   const discoverLatestPoDashboardSessionKey = usePoDashboardAnalysisStore(
@@ -668,6 +719,14 @@ export function Chat() {
   // 右半区 Tab 由当前会话 key 派生：命中 dashboard key 即处于「看板分析」视图。
   // 这样即便用户从侧栏切走其它会话，视图也能与全局会话天然保持一致。
   const poRightTab: PoRightTab = isPoDashboardSessionKey(currentSessionKey) ? 'dashboard' : 'chat';
+  // 左侧看板 Tab 由 Chat 页托管：一看板一会话，切 Tab 即切隐形会话。
+  const [poBoardTab, setPoBoardTab] = useState<PoBoardKind>('region');
+  // 当前会话 key 自带 board 段 → 反向同步左侧 Tab，保证「会话 ↔ 看板」始终一致
+  //（例如刷新页面恢复到某个看板会话、或从别处切入时）。
+  const currentDashboardBoard = parsePoDashboardSessionKey(currentSessionKey)?.board ?? null;
+  useEffect(() => {
+    if (currentDashboardBoard) setPoBoardTab(currentDashboardBoard);
+  }, [currentDashboardBoard]);
   // 记住最后一次「对话」会话 key，供从看板分析 Tab 切回时恢复。
   const lastChatSessionKeyRef = useRef<string>(DEFAULT_SESSION_KEY);
   useEffect(() => {
@@ -676,68 +735,81 @@ export function Chat() {
     }
   }, [currentSessionKey]);
 
-  // 统一入口：新建看板分析会话（时间戳 key，模拟覆盖旧记录）并隐藏触发一次分析。
-  const triggerPoDashboardAnalysis = useCallback(() => {
-    const newKey = startPoDashboardSession();
+  // 统一入口：为指定看板新建分析会话（时间戳 key，模拟覆盖旧记录）并隐藏触发一次分析。
+  // 筛选上下文从 store 即时读取（getState），避免把 boardContexts 纳入依赖引发无谓重建。
+  const triggerPoDashboardAnalysis = useCallback((board: PoBoardKind) => {
+    const newKey = startPoDashboardSession(board);
     // 同步占用 in-flight 锁，避免加载 effect 抢先对这个尚未在后端创建的新 key
     // 误走 createIfMissing=false 的 loadSession 分支（新 key 会被识别为「已持久化历史」）。
     acpLoadInFlightKeyRef.current = `${newKey}\0${cwd}`;
     selectAcpSession(newKey, cwd);
+    const boardContext = usePoDashboardAnalysisStore.getState().boardContexts[board];
     runAcpPrompt({
       sessionKey: newKey,
       promptCwd: cwd,
-      text: PO_DASHBOARD_ANALYSIS_PROMPT,
+      text: buildPoDashboardAnalysisPrompt(board, boardContext),
       createIfMissing: true,
     });
   }, [cwd, runAcpPrompt, selectAcpSession, startPoDashboardSession]);
+
+  // 激活某个看板的分析会话：统一以后端真实会话为准，发现该 board「最新一个」会话并加载其历史；
+  // 后端确实一个都没有（首次使用）才新建会话并隐藏触发一次分析。
+  // 先用前端持久化 key 立即加载兜底（避免等待 RPC 的空窗），再用后端发现结果校正。
+  const activateBoardAnalysis = useCallback((board: PoBoardKind) => {
+    const fallbackKey = usePoDashboardAnalysisStore.getState().sessionKeys[board];
+    if (fallbackKey) {
+      selectAcpSession(fallbackKey, cwd);
+    }
+    void (async () => {
+      const latestKey = await discoverLatestPoDashboardSessionKey(board);
+      if (latestKey) {
+        // 后端存在会话：加载最新一个的历史（若与兜底 key 相同则为幂等切换）。
+        selectAcpSession(latestKey, cwd);
+        return;
+      }
+      // 后端一个都没有：仅当前端也无兜底 key 时才触发首次分析，避免重复触发。
+      if (!fallbackKey) {
+        triggerPoDashboardAnalysis(board);
+      }
+    })();
+  }, [cwd, discoverLatestPoDashboardSessionKey, selectAcpSession, triggerPoDashboardAnalysis]);
 
   const handleSelectPoRightTab = useCallback((nextTab: PoRightTab) => {
     if (nextTab === poRightTab) return;
     if (nextTab === 'chat') {
       selectAcpSession(lastChatSessionKeyRef.current);
       return;
-}
-    // 切到看板分析：统一以后端真实会话为准，发现「最新一个 dashboard 会话」并加载其历史；
-    // 后端确实一个都没有（首次使用）才新建会话并隐藏触发一次分析。
-    // 先用前端持久化 key 立即加载兜底（避免等待 RPC 的空窗），再用后端发现结果校正。
-    if (poDashboardSessionKey) {
-      selectAcpSession(poDashboardSessionKey, cwd);
     }
- void (async () => {
- const latestKey = await discoverLatestPoDashboardSessionKey();
-      if (latestKey) {
-        // 后端存在会话：加载最新一个的历史（若与兜底 key 相同则为幂等切换）。
-     selectAcpSession(latestKey, cwd);
-        return;
-      }
-      // 后端一个都没有：仅当前端也无兜底 key 时才触发首次分析，避免重复触发。
-      if (!poDashboardSessionKey) {
-        triggerPoDashboardAnalysis();
-      }
-    })();
-  }, [
-  cwd,
-    discoverLatestPoDashboardSessionKey,
-    poDashboardSessionKey,
-    poRightTab,
-    selectAcpSession,
-    triggerPoDashboardAnalysis,
-  ]);
+    activateBoardAnalysis(poBoardTab);
+  }, [activateBoardAnalysis, poBoardTab, poRightTab, selectAcpSession]);
+
+  // 切左侧看板 Tab：始终切换视图；若当前正处于「看板分析」视图，同时切到该看板的分析会话。
+  const handleSelectPoBoardTab = useCallback((nextBoard: PoBoardKind) => {
+    if (nextBoard === poBoardTab) return;
+    setPoBoardTab(nextBoard);
+    if (poRightTab === 'dashboard') {
+      activateBoardAnalysis(nextBoard);
+    }
+  }, [activateBoardAnalysis, poBoardTab, poRightTab]);
 
   const showPoRightTabs = isPoAgent;
   const isPoDashboardView = showPoRightTabs && poRightTab === 'dashboard';
 
-  // 画像看板点「刷新」→ store.requestRefresh 自增 refreshSignal → 此处监听并重跑看板分析。
-  // 「重跑分析」的权力收敛到画像刷新按钮：看板分析 Tab 不再单独提供「重新分析」按钮。
-  const poDashboardRefreshSignal = usePoDashboardAnalysisStore((s) => s.refreshSignal);
-  const prevPoDashboardRefreshSignalRef = useRef(poDashboardRefreshSignal);
+  // 看板点「刷新」→ store.requestRefresh(board) 自增该看板信号 → 此处逐 board 比对并重跑分析。
+  // 「重跑分析」的权力收敛到各看板的刷新按钮：看板分析 Tab 不再单独提供「重新分析」按钮。
+  const poDashboardRefreshSignals = usePoDashboardAnalysisStore((s) => s.refreshSignals);
+  const prevPoDashboardRefreshSignalsRef = useRef(poDashboardRefreshSignals);
   useEffect(() => {
-    if (poDashboardRefreshSignal === prevPoDashboardRefreshSignalRef.current) return;
-    prevPoDashboardRefreshSignalRef.current = poDashboardRefreshSignal;
+    const prev = prevPoDashboardRefreshSignalsRef.current;
+    if (prev === poDashboardRefreshSignals) return;
+    prevPoDashboardRefreshSignalsRef.current = poDashboardRefreshSignals;
     if (!isPoAgent) return;
-    // 新建时间戳会话覆盖旧分析（模拟「刷新即重跑」）。
-    triggerPoDashboardAnalysis();
-  }, [poDashboardRefreshSignal, isPoAgent, triggerPoDashboardAnalysis]);
+    for (const board of PO_BOARD_KINDS) {
+      if (poDashboardRefreshSignals[board] === prev[board]) continue;
+      // 新建时间戳会话覆盖该看板的旧分析（模拟「刷新即重跑」）。
+      triggerPoDashboardAnalysis(board);
+    }
+  }, [poDashboardRefreshSignals, isPoAgent, triggerPoDashboardAnalysis]);
 
   // 看板分析视图下 timeline 为空时的状态：分析中 / 失败 / 空闲。
   const poDashboardAnalysisStatus: 'running' | 'error' | 'idle' =
@@ -775,7 +847,7 @@ export function Chat() {
     >
       {currentAgentId === PRESET_PO_AGENT_ID && (
         <aside className="hidden w-1/2 shrink-0 border-r border-black/5 dark:border-white/10 lg:flex lg:flex-col">
-          <PoDashboardPanel />
+          <PoDashboardPanel tab={poBoardTab} onTabChange={handleSelectPoBoardTab} />
         </aside>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -850,9 +922,10 @@ export function Chat() {
                     </div>
                   ) : showPoDashboardState ? (
                     <PoDashboardAnalysisState
+                      board={poBoardTab}
                       status={poDashboardAnalysisStatus}
                       errorMessage={visibleAcpError}
-                      onRetry={triggerPoDashboardAnalysis}
+                      onRetry={() => triggerPoDashboardAnalysis(poBoardTab)}
                     />
                   ) : visibleAcpTimeline.itemOrder.length === 0 ? (
                     <AcpEmptyState />
