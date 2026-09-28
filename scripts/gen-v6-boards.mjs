@@ -142,6 +142,7 @@ export function buildRegionAtoms(table) {
     hcWhSup: table.人头附表_仓供应商,
     peak: table.峰值附表,
     crossFix: 脱敏跨仓修正(table.跨仓修正表),
+    contracted: table.V6元信息.contracted ?? {},
   };
 }
 
@@ -160,6 +161,7 @@ function 自检原子量(table, atoms) {
     hcWhSup: atoms.hcWhSup,
     peak: atoms.peak,
     crossFix: atoms.crossFix,
+    contracted: atoms.contracted ?? {},
   };
   const scopes = [[], ...table.V6元信息.warehouses.map((w) => [w])];
   let 比对数 = 0;

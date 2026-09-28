@@ -91,6 +91,8 @@ export const V6元信息 = metaRaw as unknown as {
   generated_at: string;
   version: string;
   口径说明: string;
+  /** 签约主数据（仓 → 已归一供应商名）；合成源提供，真实源缺失时为空。供静默供应商派生。 */
+  contracted?: Record<string, string[]>;
 };
 
 /** 黄金样本（P2 对账闸门用，6 组场景） */
@@ -182,6 +184,8 @@ export interface 区域原子量 {
   hcWhSup: HeadcountRow[];
   peak: PeakSupplyRow[];
   crossFix: CrossWhFixRow[];
+  /** 签约主数据（仓 → 已归一供应商名）；供静默供应商派生。真实源缺失时为空对象。 */
+  contracted: Record<string, string[]>;
 }
 
 /** 缺省数据源：直接取 bundle 内的真源转发常量（向后兼容 gen / 对账脚本）。 */
@@ -193,6 +197,7 @@ export const 默认区域原子量: 区域原子量 = {
   hcWhSup: 人头附表_仓供应商,
   peak: 峰值附表,
   crossFix: 跨仓修正表,
+  contracted: V6元信息.contracted ?? {},
 };
 
 /* ========================= 聚合工具 ========================= */
@@ -279,7 +284,7 @@ export interface 板块一聚合 extends 聚合品质 {
   供给满足率: number | null;
   /** 业务方指定常量 14 天（非实算），与 Python `SUPPLY_LEAD_REGION_CONST` 同源。 */
   供给时效: number | null;
-  静默供应商数量: null;
+  静默供应商数量: number | null;
   静默供应商名单: string[];
 }
 
@@ -516,6 +521,16 @@ export function 聚合板块一(
   const 排序供应商 = [...供应商人头.entries()].sort((a, b) => b[1] - a[1]);
   const 占比列表= 排序供应商.map(([sup, n]) => ({ sup, share: 总供给 > 0 ? n / 总供给 : 0 }));
 
+  // ★静默供应商派生：签约主数据（覆盖仓签约名单并集）− 活跃名单（有供给者）。
+  //   与 Python board1.py 同源：cover_whs = 仓 非空取仓，否则全部签约仓；无签约主数据源时回退 null。
+  const 覆盖仓 = 仓.length > 0 ? 仓 : Object.keys(源.contracted ?? {});
+  const 签约集 = new Set<string>();
+  for (const w of 覆盖仓) for (const s of 源.contracted?.[w] ?? []) 签约集.add(s);
+  const 活跃集 = new Set(排序供应商.map(([sup]) => sup));
+  const 有签约 = 签约集.size > 0;
+  const 静默名单 = 有签约 ? [...签约集].filter((s) => !活跃集.has(s)).sort() : [];
+  const 静默数量 = 有签约 ? 静默名单.length : null;
+
   return {
     考勤工时: Number(考勤工时.toFixed(2)),
     全体考勤工时: Number(全体考勤工时.toFixed(2)),
@@ -560,11 +575,13 @@ export function 聚合板块一(
     覆盖物流仓: [...new Set(fact.map((r) => r.物流仓))].sort(),
     统计周期: `${周期.起}~${周期.止}`,
     数据状态:
-      '供给满足率=业务方指定100%；供给时效=业务方指定14天；静默供应商=无数据源（签约主数据未接入）',
+      有签约
+        ? '供给满足率=业务方指定100%；供给时效=业务方指定14天；静默供应商=签约主数据派生'
+        : '供给满足率=业务方指定100%；供给时效=业务方指定14天；静默供应商=无数据源（签约主数据未接入）',
     供给满足率: 供给满足率常量,
     供给时效: 供给时效区域常量,
-    静默供应商数量: null,
-    静默供应商名单: [],
+    静默供应商数量: 静默数量,
+    静默供应商名单: 静默名单,
     人头近似: !周期.周期档,
     峰值近似: 仓.length !== 1,
   };

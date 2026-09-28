@@ -22,7 +22,7 @@
  *   - 供给时效（天）：★业务方指定，非实算。板块一/二固定 14 天；板块三按需求量桶
  *     （0-20→7 / 20-100→14 / 100以上→30）；板块四按「入职总人数」套用同一分桶。
  *   - 计划需求台账（未接入）→ 需求量下限/上限（板块三仅为分桶标签）。
- *   - 签约供应商主数据（未接入）→ 静默供应商数量、静默供应商名单恒为 null。
+ *   - 签约供应商主数据（合成源已接入 meta.contracted）→ 静默供应商 = 覆盖仓签约名单并集 − 活跃名单；真实源缺签约主数据时回退 null。
  *   - 用工需求台账（未接入）→ 板块四履约达成率恒为 null。
  */
 import { Type, Static } from '@sinclair/typebox';
@@ -602,6 +602,7 @@ export const V6AppDataSchema = Type.Object({
     warehouses: Type.Array(WarehouseSchema),
     metrics: Type.Array(Type.Any()), // MetricDictRow
     placeholders: Type.Record(Type.String(), Type.String()), // { 指标名: 占位原因 }
+    contracted: Type.Optional(Type.Record(Type.String(), Type.Array(Type.String()))), // 签约主数据 { 仓: [供应商名] }
     generated_at: Type.String(),
     version: Type.String(),
     口径说明: Type.String(),
