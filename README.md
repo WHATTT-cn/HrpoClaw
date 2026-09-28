@@ -183,7 +183,7 @@ pnpm dev
 
 ## 系统架构
 
-HR Partner 沿用 **双进程 + Host API 统一接入架构**，并在官方受控接缝层（plugin-sdk / 策略链 / 文件层 / 控制面 RPC）落地 HR 垂类改造，**不改 agent loop、不改 harness**，持续吃上游 OpenClaw 的升级红利。
+HR Partner 沿用 **双进程 + Host API 统一接入架构**，并在官方受控接缝层（plugin-sdk / 策略链 / 文件层 / 控制面 RPC）落地 HR 垂类改造，**不改 agent loop、只改 harness**，持续吃上游 OpenClaw 的升级红利。
 
 - **不动的内核**：LLM、决策循环（loop）、运行时卡口（harness）保持官方轨道；
 - **合规与人审层**：五闸校验（`tool_result_persist` hook）+ 生效校验（`execute` 映射 + 改写回喂）；
