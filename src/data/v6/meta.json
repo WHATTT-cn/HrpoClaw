@@ -17,8 +17,7 @@
     "阿联酋迪拜定制3号仓",
     "阿联酋迪拜中小件2号仓",
     "阿联酋迪拜定制6号仓",
-    "阿联酋迪拜大件1号仓",
-    "未知"
+    "阿联酋迪拜大件1号仓"
   ],
   "metrics": [
     {
@@ -295,19 +294,19 @@
       "板块": "板块一",
       "指标名": "静默供应商数量",
       "中文定义": "已签约但窗口内无供给",
-      "计算公式": "无签约主数据，置 null",
-      "数据源列位": "—",
-      "数据状态": "无数据源-占位",
-      "备注": "签约供应商主数据未接入"
+      "计算公式": "count(签约供应商 − 活跃供应商)",
+      "数据源列位": "签约主数据",
+      "数据状态": "已实算",
+      "备注": "签约主数据派生（覆盖仓签约名单并集 − 活跃名单）"
     },
     {
       "板块": "板块一",
       "指标名": "静默供应商名单",
       "中文定义": "同上的名单",
-      "计算公式": "无签约主数据，置空",
-      "数据源列位": "—",
-      "数据状态": "无数据源-占位",
-      "备注": "签约供应商主数据未接入"
+      "计算公式": "sorted(签约供应商 − 活跃供应商)",
+      "数据源列位": "签约主数据",
+      "数据状态": "已实算",
+      "备注": "签约主数据派生"
     },
     {
       "板块": "板块一",
@@ -796,11 +795,70 @@
       "备注": "★业务方指定值，非实算；分桶阈值与板块三同源"
     }
   ],
-  "placeholders": {
-    "静默供应商数量": "无数据源-占位（签约供应商主数据未接入）",
-    "静默供应商名单": "无数据源-占位（签约供应商主数据未接入）"
+  "placeholders": {},
+  "contracted": {
+    "阿联酋迪拜大件1号仓": [
+      "BLUE RIBBON LABOR SUPPLY SERVICES",
+      "INNOVATION DIRECT EMPLOYMENT SERVICES L.L.C",
+      "Astral",
+      "Ogram FZ-LLC",
+      "Prestige Labour Supply LLC",
+      "Ontime Manpower Supply",
+      "Staff Management Group",
+      "AL MAWARID ALTHAKI RECRUITMENT L.L.C"
+    ],
+    "阿联酋迪拜中小件2号仓": [
+      "BLUE RIBBON LABOR SUPPLY SERVICES",
+      "INNOVATION DIRECT EMPLOYMENT SERVICES L.L.C",
+      "Astral",
+      "Ogram FZ-LLC",
+      "Prestige Labour Supply LLC",
+      "Ontime Manpower Supply",
+      "Stallion on Demand Labor Supply LLC",
+      "TMAX ON DEMAND LABORS SUPPLYL.L.C"
+    ],
+    "阿联酋迪拜定制3号仓": [
+      "BLUE RIBBON LABOR SUPPLY SERVICES",
+      "INNOVATION DIRECT EMPLOYMENT SERVICES L.L.C",
+      "Astral",
+      "Ogram FZ-LLC",
+      "Prestige Labour Supply LLC",
+      "Ontime Manpower Supply",
+      "AM GLOBAL ON DEMAND LABORS SUPPLY",
+      "EFS Manpower Supply"
+    ],
+    "阿联酋迪拜中小件5号仓": [
+      "BLUE RIBBON LABOR SUPPLY SERVICES",
+      "INNOVATION DIRECT EMPLOYMENT SERVICES L.L.C",
+      "Astral",
+      "Ogram FZ-LLC",
+      "Prestige Labour Supply LLC",
+      "Ontime Manpower Supply",
+      "rightforce",
+      "Work Supply–Trabalho Temporário Lda"
+    ],
+    "阿联酋迪拜定制6号仓": [
+      "BLUE RIBBON LABOR SUPPLY SERVICES",
+      "INNOVATION DIRECT EMPLOYMENT SERVICES L.L.C",
+      "Astral",
+      "Ogram FZ-LLC",
+      "Prestige Labour Supply LLC",
+      "Ontime Manpower Supply",
+      "COSCO SHIPPING WEST ASIA FZE",
+      "TOTAL FACILITY MANAGEMENT SERVICES CO"
+    ],
+    "阿联酋迪拜定制8号仓": [
+      "BLUE RIBBON LABOR SUPPLY SERVICES",
+      "INNOVATION DIRECT EMPLOYMENT SERVICES L.L.C",
+      "Astral",
+      "Ogram FZ-LLC",
+      "Prestige Labour Supply LLC",
+      "Ontime Manpower Supply",
+      "Establishment JAK For operation and Maintenance",
+      "Staff Management Group"
+    ]
   },
-  "generated_at": "2026-09-20 13:57:46",
+  "generated_at": "2026-09-28 17:10:39",
   "version": "V6",
   "口径说明": "详见 data/v6/out/00_指标口径与计算公式_全量.xlsx"
 }
