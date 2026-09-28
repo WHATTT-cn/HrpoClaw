@@ -10,6 +10,7 @@ import {
   OPENCLAW_HEARTBEAT_POLL_SENTINEL,
 } from '@shared/chat/openclaw-internal';
 import { useGatewayStore } from './gateway';
+import { isPoDashboardSessionKey } from './po-dashboard-analysis';
 import { pickStartupSessionFallback } from './chat/session-selection';
 import {
   applyGatewaySessionsChanged,
@@ -349,6 +350,17 @@ function repairMissingCurrentSelection(
   currentSessionKey: string;
   currentAgentId: string;
 } {
+  // PO 看板分析会话（agent:po:dashboard-<ts>）是隐形会话：被 shouldIncludeSessionInSidebarList
+  // 排除出侧栏、也不是真实网关会话，永远不会出现在 sessions 数组里。若按"当前选中不在列表即
+  // 无效"来 fallback，会把它踢回对话会话，导致看板分析 Tab 闪退回对话 Tab。此处豁免，保持选中。
+  if (isPoDashboardSessionKey(currentSessionKey)) {
+    return {
+      sessions,
+      currentSessionKey,
+      currentAgentId: getAgentIdFromSessionKey(currentSessionKey),
+    };
+  }
+
   if (sessions.some((session) => session.key === currentSessionKey)) {
     return {
       sessions,
@@ -744,6 +756,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             }
             if (
               !replacedHiddenHeartbeatSession
+              && !isPoDashboardSessionKey(nextSessionKey)
               && !visibleMergedSessions.some((session) => session.key === nextSessionKey)
               && visibleMergedSessions.length > 0
             ) {

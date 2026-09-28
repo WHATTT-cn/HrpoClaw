@@ -18,6 +18,8 @@ type AcpTimelineProps = {
   fileActivity?: AcpFileActivityProjection;
   workspaceRoot?: string;
   turnTimingsByUserMessageId?: Record<string, AcpTurnTiming>;
+  /** 看板分析 Tab 专用：隐藏用户段（固定提示词对用户不可见）。 */
+  hideUserSegments?: boolean;
 };
 
 export function streamingMessageSegmentIds(
@@ -48,6 +50,7 @@ export function AcpTimeline({
   fileActivity,
   workspaceRoot,
   turnTimingsByUserMessageId = {},
+  hideUserSegments = false,
 }: AcpTimelineProps) {
   const groups = groupAcpTimelineItems(snapshot);
   const streamingSegmentIds = streamingMessageSegmentIds(snapshot, isStreaming);
@@ -57,6 +60,7 @@ export function AcpTimeline({
       {error && <AcpErrorBanner message={error} kind={errorKind} onDismiss={onDismissError} />}
       {groups.map((group) => {
         if (group.kind === 'user') {
+          if (hideUserSegments) return null;
           return (
             <div key={group.id} data-acp-group-id={group.id} className="flex flex-col gap-3">
               {group.items.map((item) => (

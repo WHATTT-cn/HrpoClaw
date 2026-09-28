@@ -1,0 +1,26 @@
+{
+  "id": "po-decisions",
+  "name": "PO Decisions",
+  "description": "采购(PO)用工决策看板(只读):用工决策.json 由 ClawX 的 src/data/supplier-decision-table.ts 经 pnpm gen:decisions 全量派生,插件仅提供 read_decision 只读查询,并注入「看板只读 + 正确更新方式」指引;历史残留的 record_decision 调用会被直接阻断(写入与人审登记已弃用)。",
+  "version": "0.2.0",
+  "entry": "index.mjs",
+  "enabledByDefault": false,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "approvalTimeoutMinutes": {
+        "type": "number",
+        "description": "人审弹窗等待超时(分钟)。默认 5。",
+        "default": 5,
+        "minimum": 1
+      },
+      "timeoutBehavior": {
+       "type": "string",
+        "description": "审批超时行为:deny=不写入(默认) / allow=按允许处理。",
+        "enum": ["allow", "deny"],
+        "default": "deny"
+      }
+    }
+  }
+}

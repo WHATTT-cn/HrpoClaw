@@ -4,6 +4,7 @@ import {
   isOpenClawHeartbeatAckText,
   OPENCLAW_HEARTBEAT_POLL_SENTINEL,
 } from '@shared/chat/openclaw-internal';
+import { isPoDashboardSessionKey } from '../po-dashboard-analysis';
 import { isCronSessionKey } from './cron-session-utils';
 import type { ChatSession } from './types';
 
@@ -71,6 +72,9 @@ export function findHiddenOpenClawHeartbeatSession(sessionKey: string, sessions:
 
 export function shouldIncludeSessionInSidebarList(session: ChatSession): boolean {
   if (!session.key) return false;
+  // 看板分析专属会话（agent:po:dashboard-<ts>）是 PO 看板分析 Tab 的内部会话，
+  // 每次刷新新建时间戳 key、旧 key 成孤儿，不应出现在左侧会话列表。
+  if (isPoDashboardSessionKey(session.key)) return false;
   // Hide renderer-local placeholders created by New Chat until the first message
   // creates the backing ACP session (acknowledgeAcpSessionCreated clears the flag).
   if (session.createdLocally) return false;

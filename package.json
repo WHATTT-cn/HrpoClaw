@@ -35,6 +35,12 @@
     "license": "MIT",
     "private": true,
     "scripts": {
+        "gen:decisions": "node scripts/gen-decisions.mjs",
+        "gen:v6": "node scripts/gen-v6-boards.mjs",
+        "verify:golden": "node scripts/_verify-golden.mjs",
+        "verify:p4": "node scripts/_verify-p4.mjs",
+        "verify:derived": "node scripts/_verify-derived.mjs",
+        "verify:v6": "pnpm run verify:golden && pnpm run verify:p4 && pnpm run verify:derived",
         "postinstall": "node scripts/patch-browser-hint.mjs",
         "init": "pnpm install && pnpm run uv:download && pnpm run agent-browser:download",
         "predev": "node scripts/generate-ext-bridge.mjs && zx scripts/prepare-preinstalled-skills-dev.mjs",

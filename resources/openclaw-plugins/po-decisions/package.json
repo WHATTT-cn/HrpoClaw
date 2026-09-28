@@ -1,0 +1,16 @@
+{
+  "name": "po-decisions-plugin",
+  "version": "0.2.0",
+  "description": "ClawX po-decisions: read-only access to the workforce-allocation decision board generated from the TypeScript source of truth",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  }
+}
