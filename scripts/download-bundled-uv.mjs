@@ -65,10 +65,7 @@ async function setupTarget(id) {
   try {
     // Download
     echo`⬇️ Downloading: ${downloadUrl}`;
-    const response = await fetch(downloadUrl);
-    if (!response.ok) throw new Error(`Failed to download: ${response.statusText}`);
-    const buffer = await response.arrayBuffer();
-    await fs.writeFile(archivePath, Buffer.from(buffer));
+    await $`curl -fL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 1800 -o ${archivePath} ${downloadUrl}`;
 
     // Extract
     echo`📂 Extracting...`;

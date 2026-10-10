@@ -78,12 +78,7 @@ async function setupTarget(id) {
   // Download (bare binary — no extraction needed)
   const startedAt = Date.now();
   echo(`   ⬇️  Downloading: ${downloadUrl}`);
-  const response = await fetch(downloadUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download ${target.asset}: ${response.status} ${response.statusText}`);
-  }
-  const buffer = await response.arrayBuffer();
-  await fs.writeFile(destBin, Buffer.from(buffer));
+  await $`curl -fL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 1800 -o ${destBin} ${downloadUrl}`;
 
   // Permission fix
   if (os.platform() !== 'win32') {

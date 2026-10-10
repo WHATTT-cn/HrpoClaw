@@ -4,7 +4,7 @@ import 'zx/globals';
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 const NODE_VERSION = '22.22.3';
-const BASE_URL = `https://nodejs.org/dist/v${NODE_VERSION}`;
+const BASE_URL = `https://npmmirror.com/mirrors/node/v${NODE_VERSION}`;
 const OUTPUT_BASE = path.join(ROOT_DIR, 'resources', 'bin');
 
 const TARGETS = {
@@ -48,10 +48,7 @@ async function setupTarget(id) {
 
   try {
     echo`⬇️ Downloading: ${downloadUrl}`;
-    const response = await fetch(downloadUrl);
-    if (!response.ok) throw new Error(`Failed to download: ${response.statusText}`);
-    const buffer = await response.arrayBuffer();
-    await fs.writeFile(archivePath, Buffer.from(buffer));
+    await $`curl -fL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 1800 -o ${archivePath} ${downloadUrl}`;
 
     echo`📂 Extracting...`;
     if (os.platform() === 'win32') {
